@@ -30,6 +30,14 @@ except ImportError:
     print("[!] Alternatively, this script can work with direct gRPC if you have the protobuf files")
 
 
+# Global state for change detection
+PREVIOUS_AGENTS = {}  # Store agent IDs from last refresh
+AGENT_FIRST_SEEN = {}  # Track when each agent was first detected
+LOST_AGENTS = {}  # Track recently lost agents with timestamp
+NEW_AGENT_TIMEOUT = 300  # Mark as "new" for 5 minutes (300 seconds)
+LOST_AGENT_DISPLAY_TIME = 300  # Show lost agents for 5 minutes
+
+
 class Colors:
     """ANSI color codes for terminal output"""
     HEADER = '\033[95m'
@@ -181,6 +189,80 @@ def is_dead_or_late(is_dead, next_checkin, agent_type):
     return 'alive'
 
 
+def track_agent_changes(agent_tree):
+    """
+    Track changes in agents between refreshes
+    
+    Args:
+        agent_tree: List of root agents with their children
+    
+    Returns:
+        dict with 'new_count', 'lost_count' keys
+    """
+    global PREVIOUS_AGENTS, AGENT_FIRST_SEEN, LOST_AGENTS
+    
+    current_time = time.time()
+    
+    # Flatten agent tree to get all agent IDs
+    current_agents = {}
+    for agent in agent_tree:
+        current_agents[agent['ID']] = agent
+        for child in agent.get('children', []):
+            current_agents[child['ID']] = child
+    
+    current_ids = set(current_agents.keys())
+    previous_ids = set(PREVIOUS_AGENTS.keys())
+    
+    # Detect new agents
+    new_ids = current_ids - previous_ids
+    for agent_id in new_ids:
+        if agent_id not in AGENT_FIRST_SEEN:
+            AGENT_FIRST_SEEN[agent_id] = current_time
+    
+    # Detect lost agents
+    lost_ids = previous_ids - current_ids
+    for agent_id in lost_ids:
+        if agent_id in PREVIOUS_AGENTS:
+            LOST_AGENTS[agent_id] = {
+                'agent': PREVIOUS_AGENTS[agent_id],
+                'lost_time': current_time
+            }
+    
+    # Clean up old lost agents (older than display time)
+    expired_lost = []
+    for agent_id, data in LOST_AGENTS.items():
+        if current_time - data['lost_time'] > LOST_AGENT_DISPLAY_TIME:
+            expired_lost.append(agent_id)
+    
+    for agent_id in expired_lost:
+        del LOST_AGENTS[agent_id]
+    
+    # Update previous state
+    PREVIOUS_AGENTS = current_agents.copy()
+    
+    return {
+        'new_count': len(new_ids),
+        'lost_count': len(lost_ids)
+    }
+
+
+def is_agent_new(agent_id):
+    """
+    Check if agent was seen recently (within NEW_AGENT_TIMEOUT)
+    
+    Args:
+        agent_id: Agent ID string
+    
+    Returns:
+        Boolean indicating if agent is new
+    """
+    if agent_id not in AGENT_FIRST_SEEN:
+        return False
+    
+    time_since_first_seen = time.time() - AGENT_FIRST_SEEN[agent_id]
+    return time_since_first_seen < NEW_AGENT_TIMEOUT
+
+
 def count_unique_hosts(agent_tree):
     """
     Count unique compromised hosts based on hostname
@@ -208,7 +290,7 @@ def count_unique_hosts(agent_tree):
     return len(unique_hostnames)
 
 
-def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None):
+def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None, changes=None):
     """Draw the main network graph visualization with hierarchical tree"""
     output = []
     
@@ -222,6 +304,13 @@ def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None):
     if last_update:
         update_time = datetime.fromtimestamp(last_update).strftime("%Y-%m-%d %H:%M:%S")
         output.append(f"{Colors.GRAY}  ⏰ Last Update: {update_time}  |  Press Ctrl+C to exit{Colors.ENDC}")
+    
+    # Show change summary at the top
+    if changes:
+        if changes['new_count'] > 0:
+            output.append(f"{Colors.GREEN}  ✨ {changes['new_count']} new agent(s) detected{Colors.ENDC}")
+        if changes['lost_count'] > 0:
+            output.append(f"{Colors.RED}  🔴 {changes['lost_count']} agent(s) lost connection{Colors.ENDC}")
     
     output.append("")
     
@@ -322,13 +411,18 @@ def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None):
         # Privilege indicator
         priv_badge = f" {Colors.CYAN}💎{Colors.ENDC}" if privileged else ""
         
+        # NEW badge for recently seen agents
+        new_badge = ""
+        if is_agent_new(agent['ID']):
+            new_badge = f" {Colors.GREEN}✨ NEW!{Colors.ENDC}"
+        
         # Format root agent line with longer connectors
         logo_line = get_logo_line(line_count)
         output.append(
             f"  {logo_line}      ╰────────[ {protocol_color}{transport.upper():^6}{Colors.ENDC} ]────────▶ "
             f"{host_color}{status_icon}{Colors.ENDC} {host_color}{pc_icon}{Colors.ENDC} "
             f"{Colors.BOLD}{username_color}{username}@{hostname}{Colors.ENDC}{priv_badge}{status_marker}  "
-            f"{Colors.GRAY}{host_id} ({type_label}){Colors.ENDC}"
+            f"{Colors.GRAY}{host_id} ({type_label}){Colors.ENDC}{new_badge}"
         )
         line_count += 1
         
@@ -395,6 +489,11 @@ def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None):
             # Child privilege indicator
             child_priv_badge = f" {Colors.CYAN}💎{Colors.ENDC}" if child_privileged else ""
             
+            # NEW badge for recently seen child agents
+            child_new_badge = ""
+            if is_agent_new(child['ID']):
+                child_new_badge = f" {Colors.GREEN}✨ NEW!{Colors.ENDC}"
+            
             # Tree branch for child
             child_branch = "╰─" if is_last_child else "├─"
             
@@ -404,7 +503,7 @@ def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None):
                 f"  {logo_line}           {child_branch}───────[ {child_protocol_color}{child_transport.upper():^6}{Colors.ENDC} ]────────▶ "
                 f"{child_color}{child_status}{Colors.ENDC} {child_color}{child_icon}{Colors.ENDC} "
                 f"{Colors.BOLD}{child_username_color}{child_username}@{child_hostname}{Colors.ENDC}{child_priv_badge}{child_status_marker}  "
-                f"{Colors.GRAY}{child_id} ({child_type}){Colors.ENDC}"
+                f"{Colors.GRAY}{child_id} ({child_type}){Colors.ENDC}{child_new_badge}"
             )
             line_count += 1
         
@@ -420,6 +519,28 @@ def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None):
     output.append("")
     output.append(f"{Colors.GRAY}{'─' * 80}{Colors.ENDC}")
     output.append(f"  🟢 Active Sessions: {Colors.BOLD}{Colors.GREEN}{total_sessions}{Colors.ENDC}  🟡 Active Beacons: {Colors.BOLD}{Colors.YELLOW}{total_beacons}{Colors.ENDC}  🔵 Total Compromised: {Colors.BOLD}{Colors.CYAN}{unique_hosts}{Colors.ENDC}")
+    
+    # Display recently lost agents
+    if LOST_AGENTS:
+        output.append("")
+        output.append(f"{Colors.RED}🔴 Recently Lost Connections:{Colors.ENDC}")
+        for agent_id, data in sorted(LOST_AGENTS.items(), key=lambda x: x[1]['lost_time'], reverse=True):
+            agent = data['agent']
+            lost_time = data['lost_time']
+            time_ago = int(time.time() - lost_time)
+            
+            # Format time ago
+            if time_ago < 60:
+                time_str = f"{time_ago}s ago"
+            else:
+                time_str = f"{time_ago // 60}m ago"
+            
+            username = agent.get('Username', 'Unknown')
+            hostname = agent.get('Hostname', 'Unknown')
+            agent_type = agent.get('type', 'unknown')
+            
+            output.append(f"  {Colors.GRAY}◇ {username}@{hostname}  {agent_id[:8]} ({agent_type}) - {time_str}{Colors.ENDC}")
+    
     output.append("")
     
     return '\n'.join(output)
@@ -554,9 +675,12 @@ async def monitor_loop(config_file, refresh_interval=5):
             # Build hierarchical tree structure
             agent_tree = build_agent_tree(sessions, beacons)
             
+            # Track changes in agents
+            changes = track_agent_changes(agent_tree)
+            
             # Clear screen and draw the graph
             clear_screen()
-            graph = draw_graph(agent_tree, len(sessions), len(beacons), time.time())
+            graph = draw_graph(agent_tree, len(sessions), len(beacons), time.time(), changes)
             print(graph)
             
             # Wait before next refresh
@@ -626,8 +750,11 @@ Examples:
             sessions, beacons = await get_sliver_data(config_file)
             agent_tree = build_agent_tree(sessions, beacons)
             
+            # Track changes (even in once mode, to initialize state)
+            changes = track_agent_changes(agent_tree)
+            
             clear_screen()
-            graph = draw_graph(agent_tree, len(sessions), len(beacons), time.time())
+            graph = draw_graph(agent_tree, len(sessions), len(beacons), time.time(), changes)
             print(graph)
         
         try:
