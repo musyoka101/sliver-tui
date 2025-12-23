@@ -1,0 +1,205 @@
+================================================================================
+                  SLIVER C2 TACTICAL PANEL - VISUAL DEMO
+         Showing your current 4 agents (1 session + 3 beacons)
+================================================================================
+
+Your Terminal Width: 337 columns (WIDE!)
+Viewport Height: 35 lines (scrollable)
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                    🎯 SLIVER C2 NETWORK VISUALIZATION                        │
+└──────────────────────────────────────────────────────────────────────────────┘
+  Status: Connected | Agents: 4 | Last Update: 2025-12-24 02:15:30
+
+
+LEFT SIDE: AGENT LIST (with C2 Logo overlay)        RIGHT SIDE: TACTICAL PANEL
+═══════════════════════════════════════════════     ═══════════════════════════
+
+                                                    ┌─────────────────────────┐
+   🎯 C2                                            │ 📊 TACTICAL INTELLIGENCE│
+  ▄████▄       ──[ MTLS  ]───▶ ◆ 💻              │                         │
+  ████████       NT AUTHORITY\NETWORK SERVICE@    │ 🌐 Network Zones        │
+  ▀██████▀       cywebdw                          │   10.10.110.0/24: 3     │
+    ▀██▀         [SESSION] [89a2f1c4]            │                         │
+                                                    │ 🏢 Domains              │
+                                                    │   M3C: 2                │
+                 ──[ HTTP  ]───▶ ◇ 🖥️              │   NT AUTHORITY: 2       │
+                   M3C\Administrator@m3dc          │                         │
+                   [BEACON] [3b7f9a21]            │ 💻 OS Distribution      │
+                   [PRIVILEGED] [NEW]              │   🖥️  Windows: 3        │
+                                                    │                         │
+                                                    │ 💎 Access Level         │
+                 ──[ HTTP  ]───▶ ◇ 🖥️              │   Privileged: 2 / 4     │
+                   M3C\Administrator@m3webaw       │   Standard: 2           │
+                   [BEACON] [8d4c2f91]            │                         │
+                   [PRIVILEGED] [NEW]              │ 🔐 Transports           │
+                                                    │   mtls: 1               │
+                                                    │   http: 3               │
+                 ──[ MTLS  ]───▶ ◇ 💻              │                         │
+                   NT AUTHORITY\NETWORK SERVICE@   │ 🔄 Pivots               │
+                   cywebdw                          │   Active: 0             │
+                   [BEACON] [f1a9c823]            │                         │
+                                                    │ 📡 Recent Activity      │
+                                                    │   New (5m): 2           │
+                                                    └─────────────────────────┘
+
+──────────────────────────────────────────────────────────────────────────────
+  🟢 Sessions: 1  🟡 Beacons: 3  🔵 Total: 4  ⚡ Privileged: 2
+
+  [q]uit [r]efresh [↑↓]scroll [h]elp
+
+
+================================================================================
+                         WITH PIVOT DEMONSTRATION
+================================================================================
+
+Imagine you pivot through m3dc to reach another host (m3internal):
+
+LEFT SIDE: AGENT LIST                               RIGHT SIDE: TACTICAL PANEL
+═══════════════════════════════════════════════     ═══════════════════════════
+
+   🎯 C2                                            ┌─────────────────────────┐
+  ▄████▄       ──[ HTTP  ]───▶ ◆ 🖥️              │ 📊 TACTICAL INTELLIGENCE│
+  ████████       M3C\Administrator@m3dc            │                         │
+  ▀██████▀       [SESSION] [3b7f9a21]             │ 🌐 Network Zones        │
+    ▀██▀         [PRIVILEGED]                      │   10.10.110.0/24: 4     │
+                 ├─[ PIVOT ]──▶ ◇ 🖥️              │   192.168.1.0/24: 1     │
+                    M3C\Administrator@m3internal   │                         │
+                    [BEACON] [a7d3c912]            │ 🏢 Domains              │
+                    [PIVOTED]                       │   M3C: 4                │
+                 └─[ PIVOT ]──▶ ◇ 💻              │   NT AUTHORITY: 2       │
+                    M3C\dbuser@m3sqlserver         │                         │
+                    [BEACON] [c8f2a134]            │ 💻 OS Distribution      │
+                    [PIVOTED]                       │   🖥️  Windows: 5        │
+                                                    │   🐧 Linux: 1           │
+                                                    │                         │
+                 ──[ HTTP  ]───▶ ◇ 💻              │ 💎 Access Level         │
+                   NT AUTHORITY\NETWORK SERVICE@   │   Privileged: 3 / 6     │
+                   cywebdw                          │   Standard: 3           │
+                   [BEACON] [89a2f1c4]            │                         │
+                                                    │ 🔐 Transports           │
+                 ──[ MTLS  ]───▶ ◆ 🐧              │   mtls: 2               │
+                   root@linuxbox                    │   http: 3               │
+                   [SESSION] [d9e1b745]            │   tcp-pivot: 2          │
+                   [PRIVILEGED] [NEW]              │                         │
+                                                    │ 🔄 Pivots               │
+                                                    │   Active: 2             │
+                                                    │                         │
+                                                    │ 📡 Recent Activity      │
+                                                    │   New (5m): 1           │
+                                                    └─────────────────────────┘
+
+──────────────────────────────────────────────────────────────────────────────
+  🟢 Sessions: 2  🟡 Beacons: 4  🔵 Total: 6  ⚡ Privileged: 3  🔄 Pivots: 2
+
+
+================================================================================
+                         CURRENT STATE (YOUR 4 AGENTS)
+================================================================================
+
+Based on your Sliver setup, here's what you're seeing:
+
+HOST 1: cywebdw (10.10.110.x)
+  ├─ SESSION: NT AUTHORITY\NETWORK SERVICE@cywebdw [mtls]
+  └─ BEACON:  NT AUTHORITY\NETWORK SERVICE@cywebdw [mtls]
+
+HOST 2: m3dc (10.10.110.x)
+  └─ BEACON:  M3C\Administrator@m3dc [http] [PRIVILEGED] [NEW]
+
+HOST 3: m3webaw (10.10.110.x)
+  └─ BEACON:  M3C\Administrator@m3webaw [http] [PRIVILEGED] [NEW]
+
+TACTICAL PANEL SHOWS:
+  🌐 Network Zones: 10.10.110.0/24: 3 hosts
+  🏢 Domains: M3C: 2, NT AUTHORITY: 2
+  💻 OS: Windows: 3
+  💎 Access: Privileged 2/4, Standard 2
+  🔐 Transports: mtls: 2, http: 2
+  🔄 Pivots: 0
+  📡 New: 2 agents
+
+
+================================================================================
+                    KEY VISUAL ELEMENTS EXPLAINED
+================================================================================
+
+AGENT STATUS INDICATORS:
+  ◆ = Active Session (filled diamond - real-time interactive)
+  ◇ = Beacon (hollow diamond - check-in periodically)
+
+OS ICONS:
+  🖥️  = Windows Desktop/Server
+  🐧 = Linux
+  💻 = Generic/Unknown
+  🍎 = macOS
+
+TRANSPORT COLORS (in actual terminal):
+  [ MTLS  ] = Cyan (secure mTLS connection)
+  [ HTTP  ] = Green (HTTP/HTTPS)
+  [ DNS   ] = Yellow (DNS C2)
+  [ PIVOT ] = Magenta (pivoted connection)
+
+PRIVILEGE BADGES:
+  [PRIVILEGED] = Administrator/SYSTEM/root access
+  [NEW] = Agent seen < 5 minutes ago
+  [PIVOTED] = Accessed through another agent
+
+TREE STRUCTURE:
+  ── = Direct C2 connection
+  ├─ = Has children (pivot parent)
+  └─ = Last child in pivot chain
+
+
+================================================================================
+                        SCROLLING DEMONSTRATION
+================================================================================
+
+With 20+ agents, your viewport scrolls:
+
+Lines 1-35 visible: ┌─────────────────────┐
+                     │  🎯 C2 Logo         │
+                     │  Agent 1            │  ← TOP OF VIEWPORT
+                     │  Agent 2            │
+                     │  Agent 3            │
+                     │  ...                │
+                     │  Agent 15           │
+                     │  Agent 16           │  ← BOTTOM OF VIEWPORT (line 35)
+                     └─────────────────────┘
+                     Agent 17 (hidden)
+                     Agent 18 (hidden)
+                     Agent 19 (hidden)
+                     Agent 20 (hidden)
+
+Press ↓ to scroll down, ↑ to scroll up
+
+
+================================================================================
+                           COLOR SCHEME (Terminal)
+================================================================================
+
+Your current theme uses:
+  - Cyan: Headers, titles, C2 logo
+  - Green: Active sessions, success indicators
+  - Yellow: Beacons, warnings
+  - Gray/Muted: Metadata, secondary info
+  - White/Bold: Hostnames, important values
+  - Magenta: Pivot indicators, special status
+
+
+================================================================================
+                        WHAT YOU SEE RIGHT NOW
+================================================================================
+
+Run the app to see live version:
+  cd ~/Desktop/boxes/hackthebox/cybernetics/extention/go
+  ./sliver-graph
+
+You should see:
+  ✅ 4 agents in left panel
+  ✅ C2 logo overlaid on left side
+  ✅ Tactical panel on far right (column ~300)
+  ✅ Windows: 3 (now fixed!)
+  ✅ Real-time updates every 5 seconds
+  ✅ Smooth scrolling with arrow keys
+  ✅ Clean, professional layout
+
