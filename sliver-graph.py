@@ -115,8 +115,8 @@ def clear_screen():
     os.system('clear' if os.name != 'nt' else 'cls')
 
 
-def draw_graph(sessions, beacons, last_update=None):
-    """Draw the main network graph visualization"""
+def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None):
+    """Draw the main network graph visualization with hierarchical tree"""
     output = []
     
     # Header
@@ -133,47 +133,33 @@ def draw_graph(sessions, beacons, last_update=None):
     output.append("")
     
     # Calculate totals
-    total_hosts = len(sessions) + len(beacons)
+    total_hosts = total_sessions + total_beacons
     
     if total_hosts == 0:
         output.append(f"{Colors.RED}                    ⚠️  [No Active Hosts Connected]{Colors.ENDC}")
         output.append("")
         return '\n'.join(output)
     
-    # Combine all hosts
-    all_hosts = []
-    for session in sessions:
-        all_hosts.append({
-            'type': 'session',
-            'data': session
-        })
-    for beacon in beacons:
-        all_hosts.append({
-            'type': 'beacon',
-            'data': beacon
-        })
-    
     # Draw the C2 server logo on the left
     logo_lines = draw_sliver_logo()
     
-    # Calculate starting position for logo (center it vertically with new single-line design)
-    logo_start = (len(all_hosts) * 1) // 2 - len(logo_lines) // 2
+    # Calculate starting position for logo (center it vertically)
+    total_lines = sum(1 + len(agent.get('children', [])) for agent in agent_tree)
+    logo_start = total_lines // 2 - len(logo_lines) // 2
     if logo_start < 0:
         logo_start = 0
     
     line_count = 0
     
-    # Draw each host with connections
-    for idx, host in enumerate(all_hosts):
-        host_data = host['data']
-        is_session = host['type'] == 'session'
-        
-        # Extract host info
-        host_id = host_data['ID'][:8] if 'ID' in host_data else 'N/A'
-        hostname = host_data.get('Hostname', 'Unknown')
-        username = host_data.get('Username', 'Unknown')
-        os_name = host_data.get('OS', 'Unknown')
-        transport = host_data.get('Transport', 'unknown')
+    # Draw each root agent and its children
+    for idx, agent in enumerate(agent_tree):
+        # Draw root agent
+        is_session = agent['type'] == 'session'
+        host_id = agent['ID'][:8]
+        hostname = agent.get('Hostname', 'Unknown')
+        username = agent.get('Username', 'Unknown')
+        os_name = agent.get('OS', 'Unknown')
+        transport = agent.get('Transport', 'unknown')
         
         # Determine colors
         if is_session:
@@ -185,14 +171,7 @@ def draw_graph(sessions, beacons, last_update=None):
         
         protocol_color = get_protocol_color(transport)
         
-        # Draw computer icon
-        computer = draw_computer(os_name)
-        
-        # Build the lines for this host - using single arrow design with emojis
-        host_lines = []
-        proto_label = f"{transport.upper()}"
-        
-        # Single line with arrow, protocol, icon and info
+        # Build the line for root agent
         if line_count >= logo_start and line_count < logo_start + len(logo_lines):
             logo_line = f"{Colors.MAGENTA}{logo_lines[line_count - logo_start]:12}{Colors.ENDC}"
         else:
@@ -209,21 +188,72 @@ def draw_graph(sessions, beacons, last_update=None):
         # Status indicator
         status_icon = "🟢" if is_session else "🟡"
         
-        # Format: Logo  ──[ PROTOCOL ]──▶ 🟢 💻 username@hostname  id (type)
-        host_lines.append(
-            f"  {logo_line}      ───[ {protocol_color}{proto_label:^6}{Colors.ENDC} ]───▶ "
+        # Check if this agent has children (is a pivot point)
+        has_children = len(agent.get('children', [])) > 0
+        tree_branch = "├─" if has_children else "──"
+        
+        # Format root agent line
+        output.append(
+            f"  {logo_line}      {tree_branch}─[ {protocol_color}{transport.upper():^6}{Colors.ENDC} ]───▶ "
             f"{status_icon} {host_color}{pc_icon}{Colors.ENDC} "
             f"{Colors.BOLD}{Colors.CYAN}{username}@{hostname}{Colors.ENDC}  "
             f"{Colors.GRAY}{host_id} ({type_label}){Colors.ENDC}"
         )
         line_count += 1
         
-        # Add lines to output
-        for line in host_lines:
-            output.append(line)
+        # Draw children (pivoted agents)
+        children = agent.get('children', [])
+        for child_idx, child in enumerate(children):
+            is_last_child = child_idx == len(children) - 1
+            
+            child_is_session = child['type'] == 'session'
+            child_id = child['ID'][:8]
+            child_hostname = child.get('Hostname', 'Unknown')
+            child_username = child.get('Username', 'Unknown')
+            child_os = child.get('OS', 'Unknown')
+            child_transport = child.get('Transport', 'unknown')
+            
+            # Determine child colors
+            if child_is_session:
+                child_color = Colors.GREEN
+                child_type = "session"
+            else:
+                child_color = Colors.YELLOW
+                child_type = "beacon"
+            
+            child_protocol_color = get_protocol_color(child_transport)
+            
+            # Logo line
+            if line_count >= logo_start and line_count < logo_start + len(logo_lines):
+                logo_line = f"{Colors.MAGENTA}{logo_lines[line_count - logo_start]:12}{Colors.ENDC}"
+            else:
+                logo_line = " " * 12
+            
+            # Child emoji icons
+            if 'windows' in child_os.lower():
+                child_icon = "🖥️ " if child_is_session else "💻"
+            elif 'linux' in child_os.lower():
+                child_icon = "🐧" if child_is_session else "🖳 "
+            else:
+                child_icon = "💻" if child_is_session else "🖥️ "
+            
+            # Child status indicator
+            child_status = "🟢" if child_is_session else "🟡"
+            
+            # Tree branch for child
+            child_branch = "└─" if is_last_child else "├─"
+            
+            # Format child line with indentation
+            output.append(
+                f"  {logo_line}      │  {child_branch}[ {child_protocol_color}{child_transport.upper():^6}{Colors.ENDC} ]──▶ "
+                f"{child_status} {child_color}{child_icon}{Colors.ENDC} "
+                f"{Colors.BOLD}{Colors.CYAN}{child_username}@{child_hostname}{Colors.ENDC}  "
+                f"{Colors.GRAY}{child_id} ({child_type}) {Colors.MAGENTA}↪ pivoted{Colors.ENDC}"
+            )
+            line_count += 1
         
-        # Add spacing between hosts
-        if idx < len(all_hosts) - 1:
+        # Add spacing between root agents
+        if idx < len(agent_tree) - 1:
             if line_count >= logo_start and line_count < logo_start + len(logo_lines):
                 logo_line = f"{Colors.MAGENTA}{logo_lines[line_count - logo_start]:12}{Colors.ENDC}"
             else:
@@ -233,10 +263,101 @@ def draw_graph(sessions, beacons, last_update=None):
     
     output.append("")
     output.append(f"{Colors.GRAY}{'─' * 80}{Colors.ENDC}")
-    output.append(f"  🟢 Active Sessions: {Colors.BOLD}{Colors.GREEN}{len(sessions)}{Colors.ENDC}  🟡 Active Beacons: {Colors.BOLD}{Colors.YELLOW}{len(beacons)}{Colors.ENDC}  🔵 Total Compromised: {Colors.BOLD}{Colors.CYAN}{total_hosts}{Colors.ENDC}")
+    output.append(f"  🟢 Active Sessions: {Colors.BOLD}{Colors.GREEN}{total_sessions}{Colors.ENDC}  🟡 Active Beacons: {Colors.BOLD}{Colors.YELLOW}{total_beacons}{Colors.ENDC}  🔵 Total Compromised: {Colors.BOLD}{Colors.CYAN}{total_hosts}{Colors.ENDC}")
     output.append("")
     
     return '\n'.join(output)
+
+
+def build_agent_tree(sessions, beacons):
+    """Build hierarchical tree structure from agents based on pivot relationships"""
+    # Convert to dict format with pivot info
+    all_agents = {}
+    
+    for s in sessions:
+        agent_id = s.ID
+        all_agents[agent_id] = {
+            'ID': s.ID,
+            'Hostname': s.Hostname,
+            'Username': s.Username,
+            'OS': s.OS,
+            'Transport': s.Transport,
+            'ProxyURL': s.ProxyURL,
+            'PeerID': s.PeerID,
+            'RemoteAddress': s.RemoteAddress,
+            'type': 'session',
+            'children': []
+        }
+    
+    for b in beacons:
+        agent_id = b.ID
+        all_agents[agent_id] = {
+            'ID': b.ID,
+            'Hostname': b.Hostname,
+            'Username': b.Username,
+            'OS': b.OS,
+            'Transport': b.Transport,
+            'ProxyURL': b.ProxyURL,
+            'RemoteAddress': b.RemoteAddress,
+            'type': 'beacon',
+            'children': []
+        }
+    
+    # Build tree by detecting parent-child relationships
+    # Agents with ProxyURL or pivot transports are children
+    root_agents = []
+    pivoted_agents = []
+    
+    for agent_id, agent in all_agents.items():
+        transport_lower = agent['Transport'].lower()
+        
+        # Check if agent is pivoted
+        is_pivoted = (
+            agent['ProxyURL'] or  # Has proxy configured
+            'pivot' in transport_lower or  # TCP pivot, etc.
+            'namedpipe' in transport_lower or  # Windows named pipe
+            'bind' in transport_lower  # Bind connection
+        )
+        
+        if is_pivoted:
+            pivoted_agents.append(agent)
+        else:
+            root_agents.append(agent)
+    
+    # Try to match pivoted agents to their parents
+    for pivoted in pivoted_agents:
+        parent_found = False
+        
+        # If ProxyURL is set, try to extract parent info
+        if pivoted['ProxyURL']:
+            # ProxyURL format might be: tcp://parentID or similar
+            proxy_url = pivoted['ProxyURL']
+            
+            # Try to find parent by matching hostname or ID in proxy URL
+            for root in root_agents:
+                if root['ID'] in proxy_url or root['Hostname'] in proxy_url:
+                    root['children'].append(pivoted)
+                    parent_found = True
+                    break
+        
+        # If transport indicates pivot type, try to match by network
+        if not parent_found:
+            transport = pivoted['Transport'].lower()
+            
+            # For named pipes or TCP pivots, try to match by hostname
+            if 'namedpipe' in transport or 'pivot' in transport:
+                for root in root_agents:
+                    # Match if same hostname (likely pivoting through that host)
+                    if root['Hostname'] == pivoted['Hostname']:
+                        root['children'].append(pivoted)
+                        parent_found = True
+                        break
+        
+        # If still no parent found, add to root (fallback)
+        if not parent_found:
+            root_agents.append(pivoted)
+    
+    return root_agents
 
 
 async def get_sliver_data(config_file):
@@ -266,30 +387,12 @@ async def monitor_loop(config_file, refresh_interval=5):
             # Get data from Sliver
             sessions, beacons = await get_sliver_data(config_file)
             
-            # Convert to dict format for drawing
-            session_list = []
-            for s in sessions:
-                session_list.append({
-                    'ID': s.ID,
-                    'Hostname': s.Hostname,
-                    'Username': s.Username,
-                    'OS': s.OS,
-                    'Transport': s.Transport,
-                })
-            
-            beacon_list = []
-            for b in beacons:
-                beacon_list.append({
-                    'ID': b.ID,
-                    'Hostname': b.Hostname,
-                    'Username': b.Username,
-                    'OS': b.OS,
-                    'Transport': b.Transport,
-                })
+            # Build hierarchical tree structure
+            agent_tree = build_agent_tree(sessions, beacons)
             
             # Clear screen and draw the graph
             clear_screen()
-            graph = draw_graph(session_list, beacon_list, time.time())
+            graph = draw_graph(agent_tree, len(sessions), len(beacons), time.time())
             print(graph)
             
             # Wait before next refresh
@@ -357,28 +460,10 @@ Examples:
         
         async def run_once():
             sessions, beacons = await get_sliver_data(config_file)
-            session_list = []
-            for s in sessions:
-                session_list.append({
-                    'ID': s.ID,
-                    'Hostname': s.Hostname,
-                    'Username': s.Username,
-                    'OS': s.OS,
-                    'Transport': s.Transport,
-                })
-            
-            beacon_list = []
-            for b in beacons:
-                beacon_list.append({
-                    'ID': b.ID,
-                    'Hostname': b.Hostname,
-                    'Username': b.Username,
-                    'OS': b.OS,
-                    'Transport': b.Transport,
-                })
+            agent_tree = build_agent_tree(sessions, beacons)
             
             clear_screen()
-            graph = draw_graph(session_list, beacon_list, time.time())
+            graph = draw_graph(agent_tree, len(sessions), len(beacons), time.time())
             print(graph)
         
         try:
