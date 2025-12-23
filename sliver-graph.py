@@ -7,13 +7,17 @@ Usage:
     python3 sliver-graph.py
     
 This tool connects to the Sliver RPC and displays an ASCII network topology
-showing all active sessions and beacons.
+showing all active sessions and beacons. It refreshes automatically every few seconds.
+Press Ctrl+C to exit.
 """
 
 import asyncio
 import os
 import sys
+import time
+import signal
 from pathlib import Path
+from datetime import datetime
 
 # Import Sliver protobuf definitions
 try:
@@ -53,30 +57,30 @@ def draw_computer(os_name):
     
     if 'windows' in os_lower:
         return [
-            "  ┌─────┐",
-            "  │ ▄▄  │",
-            "  │ ▀▀  │",
-            "  └─────┘",
-            "  ┌─────┐",
-            "  └─────┘"
+            "┌─────┐",
+            "│ ▄▄  │",
+            "│ ▀▀  │",
+            "└─────┘",
+            "┌─────┐",
+            "└─────┘"
         ]
     elif 'linux' in os_lower:
         return [
-            "  ┌─────┐",
-            "  │ ╱╲  │",
-            "  │▕  ▏ │",
-            "  └─────┘",
-            "  ┌─────┐",
-            "  └─────┘"
+            "┌─────┐",
+            "│ ╱╲  │",
+            "│▕  ▏ │",
+            "└─────┘",
+            "┌─────┐",
+            "└─────┘"
         ]
     else:
         return [
-            "  ┌─────┐",
-            "  │ ▄▄▄ │",
-            "  │ ███ │",
-            "  └─────┘",
-            "  ┌─────┐",
-            "  └─────┘"
+            "┌─────┐",
+            "│ ▄▄▄ │",
+            "│ ███ │",
+            "└─────┘",
+            "┌─────┐",
+            "└─────┘"
         ]
 
 
@@ -106,15 +110,26 @@ def get_protocol_color(transport):
         return Colors.WHITE
 
 
-def draw_graph(sessions, beacons):
+def clear_screen():
+    """Clear the terminal screen"""
+    os.system('clear' if os.name != 'nt' else 'cls')
+
+
+def draw_graph(sessions, beacons, last_update=None):
     """Draw the main network graph visualization"""
     output = []
     
     # Header
     output.append("")
-    output.append(f"{Colors.BOLD}{Colors.CYAN}╔══════════════════════════════════════════════════════════════════════════════╗{Colors.ENDC}")
-    output.append(f"{Colors.BOLD}{Colors.CYAN}║            SLIVER C2 - NETWORK TOPOLOGY VISUALIZATION                        ║{Colors.ENDC}")
-    output.append(f"{Colors.BOLD}{Colors.CYAN}╚══════════════════════════════════════════════════════════════════════════════╝{Colors.ENDC}")
+    output.append(f"{Colors.BOLD}{Colors.CYAN}╔════════════════════════════════════════════════════════════════════════════╗{Colors.ENDC}")
+    output.append(f"{Colors.BOLD}{Colors.CYAN}║          SLIVER C2 - NETWORK TOPOLOGY VISUALIZATION                        ║{Colors.ENDC}")
+    output.append(f"{Colors.BOLD}{Colors.CYAN}╚════════════════════════════════════════════════════════════════════════════╝{Colors.ENDC}")
+    
+    # Show last update time
+    if last_update:
+        update_time = datetime.fromtimestamp(last_update).strftime("%Y-%m-%d %H:%M:%S")
+        output.append(f"{Colors.GRAY}  Last Update: {update_time}  |  Press Ctrl+C to exit{Colors.ENDC}")
+    
     output.append("")
     
     # Calculate totals
@@ -179,7 +194,7 @@ def draw_graph(sessions, beacons):
             logo_line = f"{Colors.MAGENTA}{logo_lines[line_count - logo_start]:12}{Colors.ENDC}"
         else:
             logo_line = " " * 12
-        host_lines.append(f"  {logo_line}  {Colors.GRAY}·········╲{Colors.ENDC}")
+        host_lines.append(f"  {logo_line}      {Colors.GRAY}·········╲{Colors.ENDC}")
         line_count += 1
         
         # Line 1: protocol label
@@ -188,7 +203,7 @@ def draw_graph(sessions, beacons):
         else:
             logo_line = " " * 12
         proto_label = f"{transport.upper()} (p0)"
-        host_lines.append(f"  {logo_line}   ────────── {protocol_color}{proto_label:^12}{Colors.ENDC} ──────────▶")
+        host_lines.append(f"  {logo_line}       ────────── {protocol_color}{proto_label:^12}{Colors.ENDC} ──────────▶")
         line_count += 1
         
         # Line 2: connection end with computer start
@@ -196,7 +211,7 @@ def draw_graph(sessions, beacons):
             logo_line = f"{Colors.MAGENTA}{logo_lines[line_count - logo_start]:12}{Colors.ENDC}"
         else:
             logo_line = " " * 12
-        host_lines.append(f"  {logo_line}  {Colors.GRAY}·········╱{Colors.ENDC}               {host_color}{computer[0]}{Colors.ENDC}")
+        host_lines.append(f"  {logo_line}      {Colors.GRAY}·········╱{Colors.ENDC}               {host_color}{computer[0]}{Colors.ENDC}")
         line_count += 1
         
         # Line 3-7: computer and info
@@ -208,12 +223,12 @@ def draw_graph(sessions, beacons):
             
             if i == 1:
                 info_text = f"  {username}@{hostname}"
-                host_lines.append(f"  {logo_line}                        {host_color}{computer[i]}{Colors.ENDC}{Colors.GRAY}{info_text}{Colors.ENDC}")
+                host_lines.append(f"  {logo_line}                              {host_color}{computer[i]}{Colors.ENDC}{Colors.GRAY}{info_text}{Colors.ENDC}")
             elif i == 2:
                 info_text = f"  {host_id} ({type_label})"
-                host_lines.append(f"  {logo_line}                        {host_color}{computer[i]}{Colors.ENDC}{Colors.GRAY}{info_text}{Colors.ENDC}")
+                host_lines.append(f"  {logo_line}                              {host_color}{computer[i]}{Colors.ENDC}{Colors.GRAY}{info_text}{Colors.ENDC}")
             else:
-                host_lines.append(f"  {logo_line}                        {host_color}{computer[i]}{Colors.ENDC}")
+                host_lines.append(f"  {logo_line}                              {host_color}{computer[i]}{Colors.ENDC}")
             line_count += 1
         
         # Add lines to output
@@ -251,13 +266,87 @@ async def get_sliver_data(config_file):
     return sessions, beacons
 
 
+def signal_handler(sig, frame):
+    """Handle Ctrl+C gracefully"""
+    print(f"\n\n{Colors.YELLOW}[*] Exiting... Goodbye!{Colors.ENDC}\n")
+    sys.exit(0)
+
+
+async def monitor_loop(config_file, refresh_interval=5):
+    """Main monitoring loop that refreshes the display"""
+    while True:
+        try:
+            # Get data from Sliver
+            sessions, beacons = await get_sliver_data(config_file)
+            
+            # Convert to dict format for drawing
+            session_list = []
+            for s in sessions:
+                session_list.append({
+                    'ID': s.ID,
+                    'Hostname': s.Hostname,
+                    'Username': s.Username,
+                    'OS': s.OS,
+                    'Transport': s.Transport,
+                })
+            
+            beacon_list = []
+            for b in beacons:
+                beacon_list.append({
+                    'ID': b.ID,
+                    'Hostname': b.Hostname,
+                    'Username': b.Username,
+                    'OS': b.OS,
+                    'Transport': b.Transport,
+                })
+            
+            # Clear screen and draw the graph
+            clear_screen()
+            graph = draw_graph(session_list, beacon_list, time.time())
+            print(graph)
+            
+            # Wait before next refresh
+            await asyncio.sleep(refresh_interval)
+            
+        except KeyboardInterrupt:
+            print(f"\n\n{Colors.YELLOW}[*] Exiting... Goodbye!{Colors.ENDC}\n")
+            sys.exit(0)
+        except Exception as e:
+            clear_screen()
+            print(f"{Colors.RED}[!] Error: {e}{Colors.ENDC}")
+            print(f"{Colors.YELLOW}[*] Retrying in {refresh_interval} seconds...{Colors.ENDC}")
+            await asyncio.sleep(refresh_interval)
+
+
 def main():
     """Main entry point"""
+    import argparse
+    
+    parser = argparse.ArgumentParser(
+        description='Sliver C2 Network Topology Visualizer - Live monitoring dashboard',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='''
+Examples:
+  python3 sliver-graph.py              # Default 5 second refresh
+  python3 sliver-graph.py -r 10        # Refresh every 10 seconds
+  python3 sliver-graph.py --once       # Run once without loop
+        '''
+    )
+    parser.add_argument('-r', '--refresh', type=int, default=5, 
+                        help='Refresh interval in seconds (default: 5)')
+    parser.add_argument('--once', action='store_true',
+                        help='Run once and exit (no live monitoring)')
+    
+    args = parser.parse_args()
+    
     if not HAS_SLIVER_PY:
         print(f"{Colors.RED}[!] This script requires sliver-py{Colors.ENDC}")
         print(f"{Colors.YELLOW}[*] Install it with: pip3 install sliver-py{Colors.ENDC}")
         print(f"{Colors.YELLOW}[*] Or install from source: https://github.com/moloch--/sliver-py{Colors.ENDC}")
         sys.exit(1)
+    
+    # Set up signal handler for Ctrl+C
+    signal.signal(signal.SIGINT, signal_handler)
     
     # Look for Sliver config file
     config_path = Path.home() / ".sliver-client" / "configs"
@@ -274,43 +363,61 @@ def main():
         sys.exit(1)
     
     config_file = config_files[0]
-    print(f"{Colors.CYAN}[*] Using config: {config_file.name}{Colors.ENDC}")
     
-    try:
-        # Get data using async
-        sessions, beacons = asyncio.run(get_sliver_data(config_file))
+    if args.once:
+        # Run once and exit
+        print(f"{Colors.CYAN}[*] Using config: {config_file.name}{Colors.ENDC}")
         
-        # Convert to dict format for drawing
-        session_list = []
-        for s in sessions:
-            session_list.append({
-                'ID': s.ID,
-                'Hostname': s.Hostname,
-                'Username': s.Username,
-                'OS': s.OS,
-                'Transport': s.Transport,
-            })
+        async def run_once():
+            sessions, beacons = await get_sliver_data(config_file)
+            session_list = []
+            for s in sessions:
+                session_list.append({
+                    'ID': s.ID,
+                    'Hostname': s.Hostname,
+                    'Username': s.Username,
+                    'OS': s.OS,
+                    'Transport': s.Transport,
+                })
+            
+            beacon_list = []
+            for b in beacons:
+                beacon_list.append({
+                    'ID': b.ID,
+                    'Hostname': b.Hostname,
+                    'Username': b.Username,
+                    'OS': b.OS,
+                    'Transport': b.Transport,
+                })
+            
+            clear_screen()
+            graph = draw_graph(session_list, beacon_list, time.time())
+            print(graph)
         
-        beacon_list = []
-        for b in beacons:
-            beacon_list.append({
-                'ID': b.ID,
-                'Hostname': b.Hostname,
-                'Username': b.Username,
-                'OS': b.OS,
-                'Transport': b.Transport,
-            })
+        try:
+            asyncio.run(run_once())
+        except Exception as e:
+            print(f"{Colors.RED}[!] Error: {e}{Colors.ENDC}")
+            sys.exit(1)
+    else:
+        # Run in monitoring mode
+        print(f"{Colors.CYAN}[*] Using config: {config_file.name}{Colors.ENDC}")
+        print(f"{Colors.CYAN}[*] Refresh interval: {args.refresh} seconds{Colors.ENDC}")
+        print(f"{Colors.CYAN}[*] Starting live monitoring... (Press Ctrl+C to exit){Colors.ENDC}")
+        time.sleep(2)
         
-        # Draw the graph
-        graph = draw_graph(session_list, beacon_list)
-        print(graph)
-        
-    except Exception as e:
-        print(f"{Colors.RED}[!] Error connecting to Sliver: {e}{Colors.ENDC}")
-        print(f"{Colors.YELLOW}[*] Make sure Sliver server is running{Colors.ENDC}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
+        try:
+            # Run the monitoring loop
+            asyncio.run(monitor_loop(config_file, refresh_interval=args.refresh))
+            
+        except KeyboardInterrupt:
+            print(f"\n\n{Colors.YELLOW}[*] Exiting... Goodbye!{Colors.ENDC}\n")
+            sys.exit(0)
+        except Exception as e:
+            print(f"{Colors.RED}[!] Error: {e}{Colors.ENDC}")
+            import traceback
+            traceback.print_exc()
+            sys.exit(1)
 
 
 if __name__ == '__main__':
