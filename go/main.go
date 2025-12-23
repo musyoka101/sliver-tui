@@ -143,14 +143,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		
 		if !m.ready {
 			// Initialize viewport on first window size message
-			// Reserve space for header (5 lines) + footer (5 lines) + tactical panel
-			headerFooterHeight := 10
+			// Header: title(4 lines with border) + status(1) + empty(1) = 6 lines
+			// Footer: empty(1) + separator(1) + empty(1) + stats(1) + lost?(0-1) + empty(1) + help(1) + empty(1) = ~7 lines
+			headerFooterHeight := 13 // Reserve 6 for header + 7 for footer
 			m.viewport = viewport.New(msg.Width, msg.Height-headerFooterHeight)
-			m.viewport.YPosition = 5 // Start after header
+			m.viewport.YPosition = 6 // Start after header (6 lines)
 			m.ready = true
 		} else {
 			// Update viewport dimensions on resize
-			headerFooterHeight := 10
+			headerFooterHeight := 13
 			m.viewport.Width = msg.Width
 			m.viewport.Height = msg.Height - headerFooterHeight
 		}
