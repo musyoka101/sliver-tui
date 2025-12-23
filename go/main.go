@@ -235,19 +235,24 @@ func (m model) renderAgents() []string {
 func (m model) renderAgentTree(agent Agent, depth int) []string {
 	var lines []string
 	
-	// Render current agent
+	// Render current agent (returns 2 lines now)
 	indent := strings.Repeat("  ", depth)
-	line := m.renderAgentLine(agent)
+	agentLines := m.renderAgentLine(agent)
 	
 	if depth > 0 {
 		// Add tree connector for child agents with better styling
 		connector := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#6272a4")).
-			Render("  ╰─▶ ")
-		line = indent + connector + line
+			Render("  ╰─")
+		
+		// First line gets the connector
+		agentLines[0] = indent + connector + agentLines[0]
+		// Second line gets matching indentation
+		agentLines[1] = indent + "    " + agentLines[1]
 	}
 	
-	lines = append(lines, line)
+	// Add both lines
+	lines = append(lines, agentLines...)
 	
 	// Add spacing between agents at root level
 	if depth == 0 && len(agent.Children) == 0 {
@@ -263,7 +268,9 @@ func (m model) renderAgentTree(agent Agent, depth int) []string {
 	return lines
 }
 
-func (m model) renderAgentLine(agent Agent) string {
+func (m model) renderAgentLine(agent Agent) []string {
+	var lines []string
+	
 	// Status icon
 	var statusIcon string
 	var statusColor lipgloss.Color
@@ -322,26 +329,35 @@ func (m model) renderAgentLine(agent Agent) string {
 			Render("✨ NEW")
 	}
 
-	// Build the line with better spacing
-	line := fmt.Sprintf("─[ %s ]─▶  %s %s   %s%s%s   %s  (%s)",
+	// Type label
+	typeLabel := "beacon"
+	if agent.IsSession {
+		typeLabel = "session"
+	} else if agent.IsDead {
+		typeLabel = "dead"
+	}
+
+	// Build first line - main agent info
+	line1 := fmt.Sprintf("──────────[ %s ]──────────▶  %s %s  %s%s%s",
 		lipgloss.NewStyle().Foreground(protocolColor).Render(agent.Transport),
 		lipgloss.NewStyle().Foreground(statusColor).Render(statusIcon),
 		osIcon,
 		lipgloss.NewStyle().Foreground(usernameColor).Bold(true).Render(fmt.Sprintf("%s@%s", agent.Username, agent.Hostname)),
 		privBadge,
 		newBadge,
-		lipgloss.NewStyle().Foreground(lipgloss.Color("#6272a4")).Render(agent.ID[:8]),
-		lipgloss.NewStyle().Foreground(statusColor).Render(func() string {
-			if agent.IsDead {
-				return "dead"
-			} else if agent.IsSession {
-				return "session"
-			}
-			return "beacon"
-		}()),
 	)
 
-	return line
+	// Build second line - details (ID, IP, type)
+	line2 := fmt.Sprintf("                                          %s  │  %s  │  (%s)",
+		lipgloss.NewStyle().Foreground(lipgloss.Color("#6272a4")).Render(agent.ID[:8]),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("#6272a4")).Render(agent.RemoteAddress),
+		lipgloss.NewStyle().Foreground(statusColor).Render(typeLabel),
+	)
+
+	lines = append(lines, line1)
+	lines = append(lines, line2)
+
+	return lines
 }
 
 // buildAgentTree organizes agents into a hierarchical tree based on pivot relationships
