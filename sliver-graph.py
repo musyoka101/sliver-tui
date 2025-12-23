@@ -181,6 +181,33 @@ def is_dead_or_late(is_dead, next_checkin, agent_type):
     return 'alive'
 
 
+def count_unique_hosts(agent_tree):
+    """
+    Count unique compromised hosts based on hostname
+    
+    Args:
+        agent_tree: List of root agents with their children
+    
+    Returns:
+        Integer count of unique hostnames
+    """
+    unique_hostnames = set()
+    
+    for agent in agent_tree:
+        # Add root agent hostname
+        hostname = agent.get('Hostname', '').lower()
+        if hostname:
+            unique_hostnames.add(hostname)
+        
+        # Add children hostnames
+        for child in agent.get('children', []):
+            child_hostname = child.get('Hostname', '').lower()
+            if child_hostname:
+                unique_hostnames.add(child_hostname)
+    
+    return len(unique_hostnames)
+
+
 def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None):
     """Draw the main network graph visualization with hierarchical tree"""
     output = []
@@ -198,10 +225,11 @@ def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None):
     
     output.append("")
     
-    # Calculate totals
-    total_hosts = total_sessions + total_beacons
+    # Calculate totals - use unique host count for compromised hosts
+    total_agents = total_sessions + total_beacons
+    unique_hosts = count_unique_hosts(agent_tree)
     
-    if total_hosts == 0:
+    if total_agents == 0:
         output.append(f"{Colors.RED}                    ⚠️  [No Active Hosts Connected]{Colors.ENDC}")
         output.append("")
         return '\n'.join(output)
@@ -377,7 +405,7 @@ def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None):
     
     output.append("")
     output.append(f"{Colors.GRAY}{'─' * 80}{Colors.ENDC}")
-    output.append(f"  🟢 Active Sessions: {Colors.BOLD}{Colors.GREEN}{total_sessions}{Colors.ENDC}  🟡 Active Beacons: {Colors.BOLD}{Colors.YELLOW}{total_beacons}{Colors.ENDC}  🔵 Total Compromised: {Colors.BOLD}{Colors.CYAN}{total_hosts}{Colors.ENDC}")
+    output.append(f"  🟢 Active Sessions: {Colors.BOLD}{Colors.GREEN}{total_sessions}{Colors.ENDC}  🟡 Active Beacons: {Colors.BOLD}{Colors.YELLOW}{total_beacons}{Colors.ENDC}  🔵 Total Compromised: {Colors.BOLD}{Colors.CYAN}{unique_hosts}{Colors.ENDC}")
     output.append("")
     
     return '\n'.join(output)
