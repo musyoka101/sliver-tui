@@ -198,40 +198,49 @@ func (m model) View() string {
 	tacticalPanel := m.renderTacticalPanel()
 	
 	// If we have agents and a panel, show it alongside main content
-	if len(m.agents) > 0 && tacticalPanel != "" {
-		// Calculate dimensions
-		// Tactical panel is 35 chars wide + 4 for border/padding = ~39 actual width
-		panelWidth := 39
-		
-		// Get main content width (approximate based on longest line)
+	if len(m.agents) > 0 && tacticalPanel != "" && m.termWidth > 100 {
+		// Split both into lines
 		mainLines := strings.Split(mainContent, "\n")
-		mainWidth := 0
-		for _, line := range mainLines {
-			// Use lipgloss.Width to account for ANSI codes
-			lineWidth := lipgloss.Width(line)
-			if lineWidth > mainWidth {
-				mainWidth = lineWidth
+		panelLines := strings.Split(tacticalPanel, "\n")
+		
+		// Calculate spacing - put panel at far right edge
+		panelStartPos := m.termWidth - 42 // 42 chars from right edge (panel width + margin)
+		if panelStartPos < 100 {
+			panelStartPos = 100 // Minimum position
+		}
+		
+		// Pad each main line to reach panel start position, then append panel line
+		maxLines := len(mainLines)
+		if len(panelLines) > maxLines {
+			maxLines = len(panelLines)
+		}
+		
+		var result []string
+		for i := 0; i < maxLines; i++ {
+			var line string
+			
+			// Get main content line
+			if i < len(mainLines) {
+				line = mainLines[i]
 			}
+			
+			// Calculate actual width without ANSI codes
+			lineWidth := lipgloss.Width(line)
+			
+			// Pad to panel start position
+			if lineWidth < panelStartPos {
+				line += strings.Repeat(" ", panelStartPos-lineWidth)
+			}
+			
+			// Add panel line if exists
+			if i < len(panelLines) {
+				line += panelLines[i]
+			}
+			
+			result = append(result, line)
 		}
 		
-		// Calculate spacing needed to push panel to far right
-		// Use termWidth, with fallback to reasonable default
-		termWidth := m.termWidth
-		if termWidth == 0 {
-			termWidth = 180 // Fallback
-		}
-		
-		// Formula: termWidth - mainWidth - panelWidth - 2 (for safety margin)
-		spacingWidth := termWidth - mainWidth - panelWidth - 2
-		if spacingWidth < 2 {
-			spacingWidth = 2 // Minimum spacing
-		}
-		
-		// Create spacing string
-		spacing := strings.Repeat(" ", spacingWidth)
-		
-		// Join horizontally with calculated spacing
-		return lipgloss.JoinHorizontal(lipgloss.Top, mainContent, spacing, tacticalPanel)
+		return strings.Join(result, "\n")
 	}
 	
 	// Fallback: just return main content
