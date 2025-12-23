@@ -197,8 +197,13 @@ func (m model) View() string {
 	// Create tactical panel (right side)
 	tacticalPanel := m.renderTacticalPanel()
 	
-	// If no terminal width yet or no panel, return just main content
-	if m.termWidth == 0 || tacticalPanel == "" {
+	// If no terminal width yet, return just main content
+	if m.termWidth == 0 {
+		return mainContent
+	}
+	
+	// If no panel (no agents), return just main content
+	if tacticalPanel == "" {
 		return mainContent
 	}
 	
@@ -251,12 +256,38 @@ func (m model) renderMainContent() string {
 
 	lines = append(lines, "")
 
-	// Use viewport for agent list if initialized
-	if m.ready && len(m.agents) > 0 {
-		lines = append(lines, m.viewport.View())
-	} else if len(m.agents) == 0 {
+	// Show agents
+	if len(m.agents) == 0 {
 		lines = append(lines, "  No agents connected")
 		lines = append(lines, "")
+	} else if m.ready {
+		// Use viewport for scrolling if initialized
+		lines = append(lines, m.viewport.View())
+	} else {
+		// Show agents without viewport until it's ready
+		agentLines := m.renderAgents()
+		logo := []string{
+			"   🎯 C2    ",
+			"  ▄████▄   ",
+			"  ████████  ",
+			"  ▀██████▀  ",
+			"    ▀██▀    ",
+		}
+		
+		logoStart := len(agentLines)/2 - len(logo)/2
+		if logoStart < 0 {
+			logoStart = 0
+		}
+
+		for i, agentLine := range agentLines {
+			var logoLine string
+			if i >= logoStart && i < logoStart+len(logo) {
+				logoLine = logoStyle.Render(logo[i-logoStart])
+			} else {
+				logoLine = strings.Repeat(" ", 12)
+			}
+			lines = append(lines, "  "+logoLine+"    "+agentLine)
+		}
 	}
 
 	// Stats footer with better separator
