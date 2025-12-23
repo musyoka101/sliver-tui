@@ -27,11 +27,7 @@ var (
 var (
 	titleStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("#00d7ff")).
-			Border(lipgloss.DoubleBorder()).
-			BorderForeground(lipgloss.Color("#00d7ff")).
-			Padding(0, 2).
-			MarginBottom(1)
+			Foreground(lipgloss.Color("#00d7ff"))
 
 	logoStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#d75fff")).
@@ -143,15 +139,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		
 		if !m.ready {
 			// Initialize viewport on first window size message
-			// Header: title(4 lines with border) + status(1) + empty(1) = 6 lines
+			// Header: title(1 line, no border) + status(1) + empty(1) = 3 lines
 			// Footer: empty(1) + separator(1) + empty(1) + stats(1) + lost?(0-1) + empty(1) + help(1) + empty(1) = ~7 lines
-			headerFooterHeight := 13 // Reserve 6 for header + 7 for footer
+			headerFooterHeight := 10 // Reserve 3 for header + 7 for footer
 			m.viewport = viewport.New(msg.Width, msg.Height-headerFooterHeight)
-			m.viewport.YPosition = 6 // Start after header (6 lines)
+			m.viewport.YPosition = 3 // Start after header (3 lines)
 			m.ready = true
 		} else {
 			// Update viewport dimensions on resize
-			headerFooterHeight := 13
+			headerFooterHeight := 10
 			m.viewport.Width = msg.Width
 			m.viewport.Height = msg.Height - headerFooterHeight
 		}
