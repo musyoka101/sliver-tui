@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -87,11 +88,13 @@ type model struct {
 	agents       []Agent
 	stats        Stats
 	spinner      spinner.Model
+	viewport     viewport.Model // Scrollable viewport for agent list
 	loading      bool
 	err          error
 	lastUpdate   time.Time
 	termWidth    int // Terminal width for responsive layout
 	termHeight   int // Terminal height
+	ready        bool // Viewport initialized
 }
 
 func (m model) Init() tea.Cmd {
@@ -102,6 +105,9 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	var cmds []tea.Cmd
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -110,18 +116,50 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "r":
 			m.loading = true
 			return m, fetchAgentsCmd
+		
+		// Viewport scrolling controls
+		case "up", "k":
+			m.viewport, cmd = m.viewport.Update(msg)
+			cmds = append(cmds, cmd)
+		case "down", "j":
+			m.viewport, cmd = m.viewport.Update(msg)
+			cmds = append(cmds, cmd)
+		case "pgup", "b", "ctrl+u":
+			m.viewport, cmd = m.viewport.Update(msg)
+			cmds = append(cmds, cmd)
+		case "pgdown", "f", "ctrl+d":
+			m.viewport, cmd = m.viewport.Update(msg)
+			cmds = append(cmds, cmd)
+		case "home", "g":
+			m.viewport.GotoTop()
+		case "end", "G":
+			m.viewport.GotoBottom()
 		}
 
 	case tea.WindowSizeMsg:
 		// Capture terminal dimensions for responsive layout
 		m.termWidth = msg.Width
 		m.termHeight = msg.Height
+		
+		if !m.ready {
+			// Initialize viewport on first window size message
+			// Reserve space for header (5 lines) + footer (5 lines) + tactical panel
+			headerFooterHeight := 10
+			m.viewport = viewport.New(msg.Width, msg.Height-headerFooterHeight)
+			m.viewport.YPosition = 5 // Start after header
+			m.ready = true
+		} else {
+			// Update viewport dimensions on resize
+			headerFooterHeight := 10
+			m.viewport.Width = msg.Width
+			m.viewport.Height = msg.Height - headerFooterHeight
+		}
+		
 		return m, nil
 
 	case spinner.TickMsg:
-		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
-		return m, cmd
+		cmds = append(cmds, cmd)
 
 	case agentsMsg:
 		m.agents = msg.agents
@@ -129,13 +167,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		m.lastUpdate = time.Now()
 		m.err = nil
-		return m, tea.Tick(5*time.Second, func(t time.Time) tea.Msg {
+		
+		// Update viewport content with new agent list
+		if m.ready {
+			m.updateViewportContent()
+		}
+		
+		cmds = append(cmds, tea.Tick(5*time.Second, func(t time.Time) tea.Msg {
 			return refreshMsg{}
-		})
+		}))
 
 	case refreshMsg:
 		m.loading = true
-		return m, fetchAgentsCmd
+		cmds = append(cmds, fetchAgentsCmd)
 
 	case errMsg:
 		m.err = msg.err
@@ -143,7 +187,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	return m, nil
+	return m, tea.Batch(cmds...)
 }
 
 func (m model) View() string {
@@ -194,42 +238,25 @@ func (m model) renderMainContent() string {
 	title := titleStyle.Render("🎯 Sliver C2 Network Topology")
 	lines = append(lines, title)
 
-	// Status with softer styling
+	// Status with scroll indicator
 	statusText := fmt.Sprintf("Last Update: %s",
 		m.lastUpdate.Format("15:04:05"))
+	
+	// Add scroll position indicator if viewport is active
+	if m.ready && len(m.agents) > 0 {
+		scrollPercent := int(m.viewport.ScrollPercent() * 100)
+		statusText += fmt.Sprintf("  │  Scroll: %d%%", scrollPercent)
+	}
 	lines = append(lines, statusStyle.Render(statusText))
 
-	// Logo
-	logo := []string{
-		"   🎯 C2    ",
-		"  ▄████▄   ",
-		"  ████████  ",
-		"  ▀██████▀  ",
-		"    ▀██▀    ",
-	}
+	lines = append(lines, "")
 
-	// Agents with logo on left and better spacing
-	if len(m.agents) == 0 {
-		lines = append(lines, "")
+	// Use viewport for agent list if initialized
+	if m.ready && len(m.agents) > 0 {
+		lines = append(lines, m.viewport.View())
+	} else if len(m.agents) == 0 {
 		lines = append(lines, "  No agents connected")
 		lines = append(lines, "")
-	} else {
-		lines = append(lines, "")
-		agentLines := m.renderAgents()
-		logoStart := len(agentLines)/2 - len(logo)/2
-		if logoStart < 0 {
-			logoStart = 0
-		}
-
-		for i, agentLine := range agentLines {
-			var logoLine string
-			if i >= logoStart && i < logoStart+len(logo) {
-				logoLine = logoStyle.Render(logo[i-logoStart])
-			} else {
-				logoLine = strings.Repeat(" ", 12)
-			}
-			lines = append(lines, "  "+logoLine+"    "+agentLine)
-		}
 	}
 
 	// Stats footer with better separator
@@ -256,7 +283,10 @@ func (m model) renderMainContent() string {
 	}
 
 	lines = append(lines, "")
-	lines = append(lines, helpStyle.Render("  Press 'r' to refresh  │  'q' to quit"))
+	
+	// Enhanced help text with scroll controls
+	helpText := "  Press 'r' to refresh  │  '↑↓' or 'j/k' to scroll  │  'q' to quit"
+	lines = append(lines, helpStyle.Render(helpText))
 	lines = append(lines, "")
 
 	return strings.Join(lines, "\n")
@@ -434,6 +464,40 @@ func (m model) renderTacticalPanel() string {
 	}
 
 	return panelStyle.Render(strings.Join(lines, "\n"))
+}
+
+// updateViewportContent updates the viewport with the current agent list
+func (m *model) updateViewportContent() {
+	// Render agents to string
+	agentLines := m.renderAgents()
+	
+	// Add logo integration
+	logo := []string{
+		"   🎯 C2    ",
+		"  ▄████▄   ",
+		"  ████████  ",
+		"  ▀██████▀  ",
+		"    ▀██▀    ",
+	}
+	
+	var contentLines []string
+	logoStart := len(agentLines)/2 - len(logo)/2
+	if logoStart < 0 {
+		logoStart = 0
+	}
+	
+	for i, agentLine := range agentLines {
+		var logoLine string
+		if i >= logoStart && i < logoStart+len(logo) {
+			logoLine = logoStyle.Render(logo[i-logoStart])
+		} else {
+			logoLine = strings.Repeat(" ", 12)
+		}
+		contentLines = append(contentLines, "  "+logoLine+"    "+agentLine)
+	}
+	
+	// Set viewport content
+	m.viewport.SetContent(strings.Join(contentLines, "\n"))
 }
 
 func (m model) renderAgents() []string {
