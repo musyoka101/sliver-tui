@@ -403,7 +403,7 @@ func (m model) renderTacticalPanel() string {
 	// Analyze data
 	subnetHosts := make(map[string]map[string]bool) // subnet -> unique hostnames
 	domains := make(map[string]int)
-	osCount := make(map[string]int)
+	osHosts := make(map[string]map[string]bool) // OS type -> unique hostnames
 	transports := make(map[string]int)
 	privilegedCount := 0
 	pivotCount := 0
@@ -428,7 +428,7 @@ func (m model) renderTacticalPanel() string {
 			domains[domain]++
 		}
 
-		// Count OS
+		// Count OS by unique hostnames
 		if agent.OS != "" {
 			osType := "Unknown"
 			if strings.Contains(strings.ToLower(agent.OS), "windows") {
@@ -438,7 +438,10 @@ func (m model) renderTacticalPanel() string {
 			} else if strings.Contains(strings.ToLower(agent.OS), "darwin") {
 				osType = "macOS"
 			}
-			osCount[osType]++
+			if osHosts[osType] == nil {
+				osHosts[osType] = make(map[string]bool)
+			}
+			osHosts[osType][agent.Hostname] = true // Track unique hostnames per OS
 		}
 
 		// Count transports
@@ -484,8 +487,8 @@ func (m model) renderTacticalPanel() string {
 	// OS Distribution
 	lines = append(lines, "")
 	lines = append(lines, sectionStyle.Render("💻 OS Distribution"))
-	if len(osCount) > 0 {
-		for os, count := range osCount {
+	if len(osHosts) > 0 {
+		for os, hosts := range osHosts {
 			icon := "💻"
 			if os == "Windows" {
 				icon = "🖥️"
@@ -497,7 +500,7 @@ func (m model) renderTacticalPanel() string {
 			lines = append(lines, fmt.Sprintf("  %s %s: %s",
 				icon,
 				os,
-				valueStyle.Render(fmt.Sprintf("%d", count))))
+				valueStyle.Render(fmt.Sprintf("%d", len(hosts)))))
 		}
 	} else {
 		lines = append(lines, mutedStyle.Render("  No OS data"))
