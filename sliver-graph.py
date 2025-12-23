@@ -234,12 +234,28 @@ def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None):
         output.append("")
         return '\n'.join(output)
     
-    # Draw the C2 server logo on the left
+    # Draw the C2 server logo
     logo_lines = draw_sliver_logo()
     
-    # Calculate starting position for logo (center it vertically)
-    total_lines = sum(1 + len(agent.get('children', [])) for agent in agent_tree)
-    logo_start = total_lines // 2 - len(logo_lines) // 2
+    # Calculate total lines needed for content (with spacing)
+    content_lines = []
+    for idx, agent in enumerate(agent_tree):
+        # Root agent line
+        content_lines.append(1)
+        
+        # Children with vertical connectors
+        children = agent.get('children', [])
+        if children:
+            for child_idx, child in enumerate(children):
+                content_lines.append(1)  # Vertical line
+                content_lines.append(1)  # Child agent line
+        
+        # Spacing between root agents (except last)
+        if idx < len(agent_tree) - 1:
+            content_lines.append(2)  # Double line spacing
+    
+    total_content_lines = sum(content_lines)
+    logo_start = total_content_lines // 2 - len(logo_lines) // 2
     if logo_start < 0:
         logo_start = 0
     
@@ -247,7 +263,7 @@ def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None):
     
     # Draw each root agent and its children
     for idx, agent in enumerate(agent_tree):
-        # Draw root agent
+        # Extract agent info
         is_session = agent['type'] == 'session'
         host_id = agent['ID'][:8]
         hostname = agent.get('Hostname', 'Unknown')
@@ -259,7 +275,7 @@ def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None):
         # Check if privileged
         privileged = is_privileged(username, uid, os_name)
         
-        # Check if agent is dead or late
+        # Check if agent is dead
         agent_status = is_dead_or_late(
             agent.get('IsDead', False),
             agent.get('NextCheckin', 0),
@@ -286,11 +302,11 @@ def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None):
             username_color = Colors.RED if privileged else Colors.CYAN
             status_marker = ""
         
-        # Build the line for root agent
-        if line_count >= logo_start and line_count < logo_start + len(logo_lines):
-            logo_line = f"{Colors.MAGENTA}{logo_lines[line_count - logo_start]:12}{Colors.ENDC}"
-        else:
-            logo_line = " " * 12
+        # Get logo line or empty space
+        def get_logo_line(line_num):
+            if line_num >= logo_start and line_num < logo_start + len(logo_lines):
+                return f"{Colors.MAGENTA}{logo_lines[line_num - logo_start]:12}{Colors.ENDC}"
+            return " " * 12
         
         # Emoji icons based on OS and type
         if 'windows' in os_name.lower():
@@ -300,19 +316,16 @@ def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None):
         else:
             pc_icon = "💻" if is_session else "🖥️ "
         
-        # Status indicator - smaller diamond icons
+        # Status indicator
         status_icon = "◆" if is_session else "◇"
         
-        # Privilege indicator - gem badge for high-value targets
+        # Privilege indicator
         priv_badge = f" {Colors.CYAN}💎{Colors.ENDC}" if privileged else ""
         
-        # Check if this agent has children (is a pivot point)
-        has_children = len(agent.get('children', [])) > 0
-        tree_branch = "├─" if has_children else "──"
-        
-        # Format root agent line
+        # Format root agent line with longer connectors
+        logo_line = get_logo_line(line_count)
         output.append(
-            f"  {logo_line}      {tree_branch}─[ {protocol_color}{transport.upper():^6}{Colors.ENDC} ]───▶ "
+            f"  {logo_line}      ╰────────[ {protocol_color}{transport.upper():^6}{Colors.ENDC} ]────────▶ "
             f"{host_color}{status_icon}{Colors.ENDC} {host_color}{pc_icon}{Colors.ENDC} "
             f"{Colors.BOLD}{username_color}{username}@{hostname}{Colors.ENDC}{priv_badge}{status_marker}  "
             f"{Colors.GRAY}{host_id} ({type_label}){Colors.ENDC}"
@@ -324,6 +337,12 @@ def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None):
         for child_idx, child in enumerate(children):
             is_last_child = child_idx == len(children) - 1
             
+            # Add vertical connector line
+            logo_line = get_logo_line(line_count)
+            output.append(f"  {logo_line}           │")
+            line_count += 1
+            
+            # Extract child info
             child_is_session = child['type'] == 'session'
             child_id = child['ID'][:8]
             child_hostname = child.get('Hostname', 'Unknown')
@@ -335,7 +354,7 @@ def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None):
             # Check if child is privileged
             child_privileged = is_privileged(child_username, child_uid, child_os)
             
-            # Check if child is dead or late
+            # Check if child is dead
             child_status_check = is_dead_or_late(
                 child.get('IsDead', False),
                 child.get('NextCheckin', 0),
@@ -362,12 +381,6 @@ def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None):
                 child_username_color = Colors.RED if child_privileged else Colors.CYAN
                 child_status_marker = ""
             
-            # Logo line
-            if line_count >= logo_start and line_count < logo_start + len(logo_lines):
-                logo_line = f"{Colors.MAGENTA}{logo_lines[line_count - logo_start]:12}{Colors.ENDC}"
-            else:
-                logo_line = " " * 12
-            
             # Child emoji icons
             if 'windows' in child_os.lower():
                 child_icon = "🖥️ " if child_is_session else "💻"
@@ -376,30 +389,31 @@ def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None):
             else:
                 child_icon = "💻" if child_is_session else "🖥️ "
             
-            # Child status indicator - smaller diamond icons
+            # Child status indicator
             child_status = "◆" if child_is_session else "◇"
             
-            # Child privilege indicator - gem badge for high-value targets
+            # Child privilege indicator
             child_priv_badge = f" {Colors.CYAN}💎{Colors.ENDC}" if child_privileged else ""
             
             # Tree branch for child
-            child_branch = "└─" if is_last_child else "├─"
+            child_branch = "╰─" if is_last_child else "├─"
             
             # Format child line with indentation
+            logo_line = get_logo_line(line_count)
             output.append(
-                f"  {logo_line}      │  {child_branch}[ {child_protocol_color}{child_transport.upper():^6}{Colors.ENDC} ]──▶ "
+                f"  {logo_line}           {child_branch}───────[ {child_protocol_color}{child_transport.upper():^6}{Colors.ENDC} ]────────▶ "
                 f"{child_color}{child_status}{Colors.ENDC} {child_color}{child_icon}{Colors.ENDC} "
                 f"{Colors.BOLD}{child_username_color}{child_username}@{child_hostname}{Colors.ENDC}{child_priv_badge}{child_status_marker}  "
-                f"{Colors.GRAY}{child_id} ({child_type}) {Colors.MAGENTA}↪ pivoted{Colors.ENDC}"
+                f"{Colors.GRAY}{child_id} ({child_type}){Colors.ENDC}"
             )
             line_count += 1
         
-        # Add spacing between root agents
+        # Add spacing between root agents (except last)
         if idx < len(agent_tree) - 1:
-            if line_count >= logo_start and line_count < logo_start + len(logo_lines):
-                logo_line = f"{Colors.MAGENTA}{logo_lines[line_count - logo_start]:12}{Colors.ENDC}"
-            else:
-                logo_line = " " * 12
+            logo_line = get_logo_line(line_count)
+            output.append(f"  {logo_line}")
+            line_count += 1
+            logo_line = get_logo_line(line_count)
             output.append(f"  {logo_line}")
             line_count += 1
     
