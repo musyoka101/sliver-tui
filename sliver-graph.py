@@ -115,6 +115,50 @@ def clear_screen():
     os.system('clear' if os.name != 'nt' else 'cls')
 
 
+def is_privileged(username, uid, os_name):
+    """Detect if session is running with elevated privileges"""
+    username_lower = username.lower() if username else ''
+    os_lower = os_name.lower() if os_name else ''
+    uid_str = str(uid) if uid else ''
+    
+    # Windows privilege detection
+    if 'windows' in os_lower:
+        # Check for well-known privileged accounts
+        privileged_names = [
+            'administrator',
+            'system',
+            'nt authority\\system',
+            'admin',
+        ]
+        
+        # Check username
+        for priv_name in privileged_names:
+            if priv_name in username_lower:
+                return True
+        
+        # Check Windows SID (Security Identifier)
+        # S-1-5-18 = SYSTEM
+        # S-1-5-19 = LOCAL SERVICE
+        # S-1-5-20 = NETWORK SERVICE
+        # S-1-5-*-500 = Administrator (RID 500)
+        if 'S-1-5-18' in uid_str:  # SYSTEM
+            return True
+        if uid_str.endswith('-500'):  # Administrator account (RID 500)
+            return True
+    
+    # Linux/Unix privilege detection
+    elif 'linux' in os_lower or 'unix' in os_lower or 'darwin' in os_lower:
+        # Check for root username
+        if username_lower == 'root':
+            return True
+        
+        # Check UID 0 (root)
+        if uid_str == '0':
+            return True
+    
+    return False
+
+
 def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None):
     """Draw the main network graph visualization with hierarchical tree"""
     output = []
@@ -160,6 +204,10 @@ def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None):
         username = agent.get('Username', 'Unknown')
         os_name = agent.get('OS', 'Unknown')
         transport = agent.get('Transport', 'unknown')
+        uid = agent.get('UID', '')
+        
+        # Check if privileged
+        privileged = is_privileged(username, uid, os_name)
         
         # Determine colors
         if is_session:
@@ -188,15 +236,21 @@ def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None):
         # Status indicator - smaller diamond icons
         status_icon = "◆" if is_session else "◇"
         
+        # Privilege indicator - gem badge for high-value targets
+        priv_badge = f" {Colors.CYAN}💎{Colors.ENDC}" if privileged else ""
+        
         # Check if this agent has children (is a pivot point)
         has_children = len(agent.get('children', [])) > 0
         tree_branch = "├─" if has_children else "──"
+        
+        # Username color - red for privileged, cyan for normal
+        username_color = Colors.RED if privileged else Colors.CYAN
         
         # Format root agent line
         output.append(
             f"  {logo_line}      {tree_branch}─[ {protocol_color}{transport.upper():^6}{Colors.ENDC} ]───▶ "
             f"{host_color}{status_icon}{Colors.ENDC} {host_color}{pc_icon}{Colors.ENDC} "
-            f"{Colors.BOLD}{Colors.CYAN}{username}@{hostname}{Colors.ENDC}  "
+            f"{Colors.BOLD}{username_color}{username}@{hostname}{Colors.ENDC}{priv_badge}  "
             f"{Colors.GRAY}{host_id} ({type_label}){Colors.ENDC}"
         )
         line_count += 1
@@ -212,6 +266,10 @@ def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None):
             child_username = child.get('Username', 'Unknown')
             child_os = child.get('OS', 'Unknown')
             child_transport = child.get('Transport', 'unknown')
+            child_uid = child.get('UID', '')
+            
+            # Check if child is privileged
+            child_privileged = is_privileged(child_username, child_uid, child_os)
             
             # Determine child colors
             if child_is_session:
@@ -240,14 +298,20 @@ def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None):
             # Child status indicator - smaller diamond icons
             child_status = "◆" if child_is_session else "◇"
             
+            # Child privilege indicator - gem badge for high-value targets
+            child_priv_badge = f" {Colors.CYAN}💎{Colors.ENDC}" if child_privileged else ""
+            
             # Tree branch for child
             child_branch = "└─" if is_last_child else "├─"
+            
+            # Child username color - red for privileged, cyan for normal
+            child_username_color = Colors.RED if child_privileged else Colors.CYAN
             
             # Format child line with indentation
             output.append(
                 f"  {logo_line}      │  {child_branch}[ {child_protocol_color}{child_transport.upper():^6}{Colors.ENDC} ]──▶ "
                 f"{child_color}{child_status}{Colors.ENDC} {child_color}{child_icon}{Colors.ENDC} "
-                f"{Colors.BOLD}{Colors.CYAN}{child_username}@{child_hostname}{Colors.ENDC}  "
+                f"{Colors.BOLD}{child_username_color}{child_username}@{child_hostname}{Colors.ENDC}{child_priv_badge}  "
                 f"{Colors.GRAY}{child_id} ({child_type}) {Colors.MAGENTA}↪ pivoted{Colors.ENDC}"
             )
             line_count += 1
@@ -285,6 +349,7 @@ def build_agent_tree(sessions, beacons):
             'ProxyURL': s.ProxyURL,
             'PeerID': s.PeerID,
             'RemoteAddress': s.RemoteAddress,
+            'UID': s.UID,
             'type': 'session',
             'children': []
         }
@@ -299,6 +364,7 @@ def build_agent_tree(sessions, beacons):
             'Transport': b.Transport,
             'ProxyURL': b.ProxyURL,
             'RemoteAddress': b.RemoteAddress,
+            'UID': b.UID,
             'type': 'beacon',
             'children': []
         }
