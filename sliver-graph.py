@@ -185,8 +185,8 @@ def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None):
         else:
             pc_icon = "💻" if is_session else "🖥️ "
         
-        # Status indicator
-        status_icon = "🟢" if is_session else "🟡"
+        # Status indicator - smaller diamond icons
+        status_icon = "◆" if is_session else "◇"
         
         # Check if this agent has children (is a pivot point)
         has_children = len(agent.get('children', [])) > 0
@@ -195,7 +195,7 @@ def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None):
         # Format root agent line
         output.append(
             f"  {logo_line}      {tree_branch}─[ {protocol_color}{transport.upper():^6}{Colors.ENDC} ]───▶ "
-            f"{status_icon} {host_color}{pc_icon}{Colors.ENDC} "
+            f"{host_color}{status_icon}{Colors.ENDC} {host_color}{pc_icon}{Colors.ENDC} "
             f"{Colors.BOLD}{Colors.CYAN}{username}@{hostname}{Colors.ENDC}  "
             f"{Colors.GRAY}{host_id} ({type_label}){Colors.ENDC}"
         )
@@ -237,8 +237,8 @@ def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None):
             else:
                 child_icon = "💻" if child_is_session else "🖥️ "
             
-            # Child status indicator
-            child_status = "🟢" if child_is_session else "🟡"
+            # Child status indicator - smaller diamond icons
+            child_status = "◆" if child_is_session else "◇"
             
             # Tree branch for child
             child_branch = "└─" if is_last_child else "├─"
@@ -246,7 +246,7 @@ def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None):
             # Format child line with indentation
             output.append(
                 f"  {logo_line}      │  {child_branch}[ {child_protocol_color}{child_transport.upper():^6}{Colors.ENDC} ]──▶ "
-                f"{child_status} {child_color}{child_icon}{Colors.ENDC} "
+                f"{child_color}{child_status}{Colors.ENDC} {child_color}{child_icon}{Colors.ENDC} "
                 f"{Colors.BOLD}{Colors.CYAN}{child_username}@{child_hostname}{Colors.ENDC}  "
                 f"{Colors.GRAY}{child_id} ({child_type}) {Colors.MAGENTA}↪ pivoted{Colors.ENDC}"
             )
