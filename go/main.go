@@ -197,43 +197,39 @@ func (m model) View() string {
 	// Create tactical panel (right side)
 	tacticalPanel := m.renderTacticalPanel()
 	
-	// If no terminal width yet, return just main content
-	if m.termWidth == 0 {
-		return mainContent
-	}
-	
-	// If no panel (no agents), return just main content
-	if tacticalPanel == "" {
-		return mainContent
-	}
-	
-	// Calculate dimensions
-	// Tactical panel is 35 chars wide + 4 for border/padding = ~39 actual width
-	panelWidth := 39
-	
-	// Get main content width (approximate based on longest line)
-	mainLines := strings.Split(mainContent, "\n")
-	mainWidth := 0
-	for _, line := range mainLines {
-		// Use lipgloss.Width to account for ANSI codes
-		lineWidth := lipgloss.Width(line)
-		if lineWidth > mainWidth {
-			mainWidth = lineWidth
+	// Debug: Always try to show panel if we have agents
+	if len(m.agents) > 0 && m.termWidth > 0 && tacticalPanel != "" {
+		// Calculate dimensions
+		// Tactical panel is 35 chars wide + 4 for border/padding = ~39 actual width
+		panelWidth := 39
+		
+		// Get main content width (approximate based on longest line)
+		mainLines := strings.Split(mainContent, "\n")
+		mainWidth := 0
+		for _, line := range mainLines {
+			// Use lipgloss.Width to account for ANSI codes
+			lineWidth := lipgloss.Width(line)
+			if lineWidth > mainWidth {
+				mainWidth = lineWidth
+			}
 		}
+		
+		// Calculate spacing needed to push panel to far right
+		// Formula: termWidth - mainWidth - panelWidth - 2 (for safety margin)
+		spacingWidth := m.termWidth - mainWidth - panelWidth - 2
+		if spacingWidth < 2 {
+			spacingWidth = 2 // Minimum spacing
+		}
+		
+		// Create spacing string
+		spacing := strings.Repeat(" ", spacingWidth)
+		
+		// Join horizontally with calculated spacing
+		return lipgloss.JoinHorizontal(lipgloss.Top, mainContent, spacing, tacticalPanel)
 	}
 	
-	// Calculate spacing needed to push panel to far right
-	// Formula: termWidth - mainWidth - panelWidth - 2 (for safety margin)
-	spacingWidth := m.termWidth - mainWidth - panelWidth - 2
-	if spacingWidth < 2 {
-		spacingWidth = 2 // Minimum spacing
-	}
-	
-	// Create spacing string
-	spacing := strings.Repeat(" ", spacingWidth)
-	
-	// Join horizontally with calculated spacing
-	return lipgloss.JoinHorizontal(lipgloss.Top, mainContent, spacing, tacticalPanel)
+	// Fallback: just return main content
+	return mainContent
 }
 
 func (m model) renderMainContent() string {
@@ -835,8 +831,8 @@ func main() {
 		loading: true,
 	}
 
-	// Create and run program
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	// Create and run program with alt screen
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
