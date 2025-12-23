@@ -85,13 +85,13 @@ def draw_computer(os_name):
 
 
 def draw_sliver_logo():
-    """Draw Sliver C2 logo"""
+    """Draw Sliver C2 logo with emoji"""
     return [
-        "   ▄████▄   ",
+        "   🎯 C2    ",
+        "  ▄████▄   ",
         "  ████████  ",
         "  ▀██████▀  ",
-        "    ▀██▀    ",
-        "     ▀      "
+        "    ▀██▀    "
     ]
 
 
@@ -122,13 +122,13 @@ def draw_graph(sessions, beacons, last_update=None):
     # Header
     output.append("")
     output.append(f"{Colors.BOLD}{Colors.CYAN}╔════════════════════════════════════════════════════════════════════════════╗{Colors.ENDC}")
-    output.append(f"{Colors.BOLD}{Colors.CYAN}║          SLIVER C2 - NETWORK TOPOLOGY VISUALIZATION                        ║{Colors.ENDC}")
+    output.append(f"{Colors.BOLD}{Colors.CYAN}║  🎯 SLIVER C2 - NETWORK TOPOLOGY VISUALIZATION                            ║{Colors.ENDC}")
     output.append(f"{Colors.BOLD}{Colors.CYAN}╚════════════════════════════════════════════════════════════════════════════╝{Colors.ENDC}")
     
     # Show last update time
     if last_update:
         update_time = datetime.fromtimestamp(last_update).strftime("%Y-%m-%d %H:%M:%S")
-        output.append(f"{Colors.GRAY}  Last Update: {update_time}  |  Press Ctrl+C to exit{Colors.ENDC}")
+        output.append(f"{Colors.GRAY}  ⏰ Last Update: {update_time}  |  Press Ctrl+C to exit{Colors.ENDC}")
     
     output.append("")
     
@@ -136,7 +136,7 @@ def draw_graph(sessions, beacons, last_update=None):
     total_hosts = len(sessions) + len(beacons)
     
     if total_hosts == 0:
-        output.append(f"{Colors.RED}                    [No Active Hosts Connected]{Colors.ENDC}")
+        output.append(f"{Colors.RED}                    ⚠️  [No Active Hosts Connected]{Colors.ENDC}")
         output.append("")
         return '\n'.join(output)
     
@@ -156,8 +156,10 @@ def draw_graph(sessions, beacons, last_update=None):
     # Draw the C2 server logo on the left
     logo_lines = draw_sliver_logo()
     
-    # Calculate starting position for logo (center it vertically)
-    logo_start = (len(all_hosts) * 7) // 2 - 2
+    # Calculate starting position for logo (center it vertically with new single-line design)
+    logo_start = (len(all_hosts) * 1) // 2 - len(logo_lines) // 2
+    if logo_start < 0:
+        logo_start = 0
     
     line_count = 0
     
@@ -186,50 +188,35 @@ def draw_graph(sessions, beacons, last_update=None):
         # Draw computer icon
         computer = draw_computer(os_name)
         
-        # Build the lines for this host
+        # Build the lines for this host - using single arrow design with emojis
         host_lines = []
+        proto_label = f"{transport.upper()}"
         
-        # Line 0: connection start
+        # Single line with arrow, protocol, icon and info
         if line_count >= logo_start and line_count < logo_start + len(logo_lines):
             logo_line = f"{Colors.MAGENTA}{logo_lines[line_count - logo_start]:12}{Colors.ENDC}"
         else:
             logo_line = " " * 12
-        host_lines.append(f"  {logo_line}      {Colors.GRAY}·········╲{Colors.ENDC}")
-        line_count += 1
         
-        # Line 1: protocol label
-        if line_count >= logo_start and line_count < logo_start + len(logo_lines):
-            logo_line = f"{Colors.MAGENTA}{logo_lines[line_count - logo_start]:12}{Colors.ENDC}"
+        # Emoji icons based on OS and type
+        if 'windows' in os_name.lower():
+            pc_icon = "🖥️ " if is_session else "💻"
+        elif 'linux' in os_name.lower():
+            pc_icon = "🐧" if is_session else "🖳 "
         else:
-            logo_line = " " * 12
-        proto_label = f"{transport.upper()} (p0)"
-        host_lines.append(f"  {logo_line}       ────────── {protocol_color}{proto_label:^12}{Colors.ENDC} ──────────▶")
-        line_count += 1
+            pc_icon = "💻" if is_session else "🖥️ "
         
-        # Line 2: connection end with computer start
-        if line_count >= logo_start and line_count < logo_start + len(logo_lines):
-            logo_line = f"{Colors.MAGENTA}{logo_lines[line_count - logo_start]:12}{Colors.ENDC}"
-        else:
-            logo_line = " " * 12
-        host_lines.append(f"  {logo_line}      {Colors.GRAY}·········╱{Colors.ENDC}               {host_color}{computer[0]}{Colors.ENDC}")
-        line_count += 1
+        # Status indicator
+        status_icon = "🟢" if is_session else "🟡"
         
-        # Line 3-7: computer and info
-        for i in range(1, 6):
-            if line_count >= logo_start and line_count < logo_start + len(logo_lines):
-                logo_line = f"{Colors.MAGENTA}{logo_lines[line_count - logo_start]:12}{Colors.ENDC}"
-            else:
-                logo_line = " " * 12
-            
-            if i == 1:
-                info_text = f"  {username}@{hostname}"
-                host_lines.append(f"  {logo_line}                              {host_color}{computer[i]}{Colors.ENDC}{Colors.GRAY}{info_text}{Colors.ENDC}")
-            elif i == 2:
-                info_text = f"  {host_id} ({type_label})"
-                host_lines.append(f"  {logo_line}                              {host_color}{computer[i]}{Colors.ENDC}{Colors.GRAY}{info_text}{Colors.ENDC}")
-            else:
-                host_lines.append(f"  {logo_line}                              {host_color}{computer[i]}{Colors.ENDC}")
-            line_count += 1
+        # Format: Logo  ──[ PROTOCOL ]──▶ 🟢 💻 username@hostname  id (type)
+        host_lines.append(
+            f"  {logo_line}      ───[ {protocol_color}{proto_label:^6}{Colors.ENDC} ]───▶ "
+            f"{status_icon} {host_color}{pc_icon}{Colors.ENDC} "
+            f"{Colors.BOLD}{Colors.CYAN}{username}@{hostname}{Colors.ENDC}  "
+            f"{Colors.GRAY}{host_id} ({type_label}){Colors.ENDC}"
+        )
+        line_count += 1
         
         # Add lines to output
         for line in host_lines:
@@ -246,7 +233,7 @@ def draw_graph(sessions, beacons, last_update=None):
     
     output.append("")
     output.append(f"{Colors.GRAY}{'─' * 80}{Colors.ENDC}")
-    output.append(f"  {Colors.GREEN}●{Colors.ENDC} Active Sessions: {len(sessions)}  {Colors.YELLOW}●{Colors.ENDC} Active Beacons: {len(beacons)}  {Colors.CYAN}●{Colors.ENDC} Total: {total_hosts}")
+    output.append(f"  🟢 Active Sessions: {Colors.BOLD}{Colors.GREEN}{len(sessions)}{Colors.ENDC}  🟡 Active Beacons: {Colors.BOLD}{Colors.YELLOW}{len(beacons)}{Colors.ENDC}  🔵 Total Compromised: {Colors.BOLD}{Colors.CYAN}{total_hosts}{Colors.ENDC}")
     output.append("")
     
     return '\n'.join(output)
