@@ -139,19 +139,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
-	if m.err != nil {
-		return fmt.Sprintf("\n  ❌ Error: %v\n\n  Press 'q' to quit, 'r' to retry\n", m.err)
-	}
+	// Create main content (left side)
+	mainContent := m.renderMainContent()
+	
+	// Create tactical panel (right side)
+	tacticalPanel := m.renderTacticalPanel()
+	
+	// Join horizontally with some spacing
+	return lipgloss.JoinHorizontal(lipgloss.Top, mainContent, "  ", tacticalPanel)
+}
 
+func (m model) renderMainContent() string {
 	var lines []string
 
-	// Title with better spacing
-	title := titleStyle.Render("🎯  SLIVER C2 - NETWORK TOPOLOGY VISUALIZATION")
-	lines = append(lines, "")
+	// Title
+	title := titleStyle.Render("🎯 Sliver C2 Network Topology")
 	lines = append(lines, title)
 
 	// Status with softer styling
-	statusText := fmt.Sprintf("Last Update: %s  │  Press Ctrl+C to exit",
+	statusText := fmt.Sprintf("Last Update: %s",
 		m.lastUpdate.Format("15:04:05"))
 	lines = append(lines, statusStyle.Render(statusText))
 
@@ -193,8 +199,8 @@ func (m model) View() string {
 	lines = append(lines, separatorStyle.Render(strings.Repeat("─", 90)))
 	lines = append(lines, "")
 	
-	statsLine := fmt.Sprintf("🟢 Sessions: %d  │  🟡 Beacons: %d  │  🔵 Total: %d  │  🖥️  Hosts: %d",
-		m.stats.Sessions, m.stats.Beacons, m.stats.Compromised, m.stats.Hosts)
+	statsLine := fmt.Sprintf("🟢 Sessions: %d  │  🟡 Beacons: %d  │  🔵 Total: %d",
+		m.stats.Sessions, m.stats.Beacons, m.stats.Compromised)
 	lines = append(lines, statsStyle.Render(statsLine))
 
 	// Show lost agents if any
@@ -212,10 +218,184 @@ func (m model) View() string {
 	}
 
 	lines = append(lines, "")
-	lines = append(lines, helpStyle.Render("  Press 'r' to refresh manually  │  'q' to quit"))
+	lines = append(lines, helpStyle.Render("  Press 'r' to refresh  │  'q' to quit"))
 	lines = append(lines, "")
 
 	return strings.Join(lines, "\n")
+}
+
+func (m model) renderTacticalPanel() string {
+	if len(m.agents) == 0 {
+		return ""
+	}
+
+	panelStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("#00d7ff")).
+		Padding(1, 2).
+		Width(35)
+
+	headerStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#00d7ff")).
+		Bold(true).
+		Underline(true)
+
+	sectionStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#f1fa8c")).
+		Bold(true).
+		MarginTop(1)
+
+	valueStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#50fa7b"))
+
+	mutedStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#6272a4"))
+
+	var lines []string
+
+	// Header
+	lines = append(lines, headerStyle.Render("📊 TACTICAL INTELLIGENCE"))
+	lines = append(lines, "")
+
+	// Analyze data
+	subnets := make(map[string]int)
+	domains := make(map[string]int)
+	osCount := make(map[string]int)
+	transports := make(map[string]int)
+	privilegedCount := 0
+	pivotCount := 0
+	newCount := 0
+
+	for _, agent := range m.agents {
+		// Extract subnet (first 3 octets)
+		if agent.RemoteAddress != "" {
+			parts := strings.Split(agent.RemoteAddress, ".")
+			if len(parts) >= 3 {
+				subnet := strings.Join(parts[:3], ".") + ".0/24"
+				subnets[subnet]++
+			}
+		}
+
+		// Extract domain
+		if strings.Contains(agent.Username, "\\") {
+			domain := strings.Split(agent.Username, "\\")[0]
+			domains[domain]++
+		}
+
+		// Count OS
+		if agent.OS != "" {
+			osType := "Unknown"
+			if strings.Contains(strings.ToLower(agent.OS), "windows") {
+				osType = "Windows"
+			} else if strings.Contains(strings.ToLower(agent.OS), "linux") {
+				osType = "Linux"
+			} else if strings.Contains(strings.ToLower(agent.OS), "darwin") {
+				osType = "macOS"
+			}
+			osCount[osType]++
+		}
+
+		// Count transports
+		transports[agent.Transport]++
+
+		if agent.IsPrivileged {
+			privilegedCount++
+		}
+		if agent.ParentID != "" {
+			pivotCount++
+		}
+		if agent.IsNew {
+			newCount++
+		}
+	}
+
+	// Compromised Subnets
+	lines = append(lines, sectionStyle.Render("🌐 Compromised Subnets"))
+	if len(subnets) > 0 {
+		for subnet, count := range subnets {
+			lines = append(lines, fmt.Sprintf("  %s %s",
+				valueStyle.Render(subnet),
+				mutedStyle.Render(fmt.Sprintf("(%d hosts)", count))))
+		}
+	} else {
+		lines = append(lines, mutedStyle.Render("  No subnet data"))
+	}
+
+	// Domains/Workgroups
+	lines = append(lines, "")
+	lines = append(lines, sectionStyle.Render("🏢 Domains Discovered"))
+	if len(domains) > 0 {
+		for domain, count := range domains {
+			lines = append(lines, fmt.Sprintf("  %s %s",
+				valueStyle.Render(domain),
+				mutedStyle.Render(fmt.Sprintf("(%d users)", count))))
+		}
+	} else {
+		lines = append(lines, mutedStyle.Render("  No domain data"))
+	}
+
+	// OS Distribution
+	lines = append(lines, "")
+	lines = append(lines, sectionStyle.Render("💻 OS Distribution"))
+	if len(osCount) > 0 {
+		for os, count := range osCount {
+			icon := "💻"
+			if os == "Windows" {
+				icon = "🖥️"
+			} else if os == "Linux" {
+				icon = "🐧"
+			} else if os == "macOS" {
+				icon = "🍎"
+			}
+			lines = append(lines, fmt.Sprintf("  %s %s: %s",
+				icon,
+				os,
+				valueStyle.Render(fmt.Sprintf("%d", count))))
+		}
+	} else {
+		lines = append(lines, mutedStyle.Render("  No OS data"))
+	}
+
+	// Access Level
+	lines = append(lines, "")
+	lines = append(lines, sectionStyle.Render("💎 Access Level"))
+	lines = append(lines, fmt.Sprintf("  Privileged: %s / %d",
+		valueStyle.Render(fmt.Sprintf("%d", privilegedCount)),
+		len(m.agents)))
+	lines = append(lines, fmt.Sprintf("  Standard: %s",
+		mutedStyle.Render(fmt.Sprintf("%d", len(m.agents)-privilegedCount))))
+
+	// Transports
+	lines = append(lines, "")
+	lines = append(lines, sectionStyle.Render("🔐 Transports"))
+	if len(transports) > 0 {
+		for transport, count := range transports {
+			lines = append(lines, fmt.Sprintf("  %s: %s",
+				transport,
+				valueStyle.Render(fmt.Sprintf("%d", count))))
+		}
+	}
+
+	// Pivots
+	if pivotCount > 0 {
+		lines = append(lines, "")
+		lines = append(lines, sectionStyle.Render("🔗 Active Pivots"))
+		lines = append(lines, fmt.Sprintf("  Pivoted agents: %s",
+			valueStyle.Render(fmt.Sprintf("%d", pivotCount))))
+	}
+
+	// Activity
+	if newCount > 0 {
+		lines = append(lines, "")
+		lines = append(lines, sectionStyle.Render("⚡ Recent Activity"))
+		lines = append(lines, fmt.Sprintf("  New (< 5min): %s",
+			lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#f1fa8c")).
+				Bold(true).
+				Render(fmt.Sprintf("✨ %d", newCount))))
+	}
+
+	return panelStyle.Render(strings.Join(lines, "\n"))
 }
 
 func (m model) renderAgents() []string {

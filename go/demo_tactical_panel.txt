@@ -1,0 +1,45 @@
+Expected TUI Layout with Tactical Panel
+=========================================
+
+LEFT SIDE (Main Content):                    RIGHT SIDE (Tactical Panel):
+                                             
+╔═══════════════════════════════════╗       ╭─────────────────────────────────╮
+║ 🎯 Sliver C2 Network Topology     ║       │ 📊 TACTICAL INTELLIGENCE        │
+╚═══════════════════════════════════╝       │                                 │
+Last Update: 14:30:22                       │ 🌐 Compromised Subnets          │
+                                             │   10.10.110.0/24 (3 hosts)      │
+   🎯 C2      ──────[ MTLS ]──────▶          │                                 │
+  ▄████▄     ◆ 🖥️  NT AUTHORITY\...          │ 🏢 Domains Discovered           │
+  ████████   22bf4a82 │ 10.10.110.10 │...   │   NT AUTHORITY (2 users)        │
+  ▀██████▀                                   │   M3C (2 users)                 │
+    ▀██▀     ──────[ MTLS ]──────▶          │                                 │
+             ◇ 💻  M3C\Administrator@m3dc    │ 💻 OS Distribution              │
+             4370d26a │ 10.10.110.15 │...   │   🖥️  Windows: 4                │
+                                             │                                 │
+             ──────[ MTLS ]──────▶          │ 💎 Access Level                 │
+             ◇ 💻  M3C\Administrator@...     │   Privileged: 2 / 4             │
+             b773f522 │ 10.10.110.20 │...   │   Standard: 2                   │
+                                             │                                 │
+             ──────[ MTLS ]──────▶          │ 🔐 Transports                   │
+             ◇ 🖥️  NT AUTHORITY\...          │   MTLS: 4                       │
+             263f4501 │ 10.10.110.10 │...   │                                 │
+                                             ╰─────────────────────────────────╯
+─────────────────────────────────────────
+🟢 Sessions: 1  │  🟡 Beacons: 3  │  🔵 Total: 4
+
+Press 'r' to refresh  │  'q' to quit
+
+
+TACTICAL PANEL FEATURES:
+========================
+
+✅ 🌐 Compromised Subnets - Shows all /24 networks with agent count
+✅ 🏢 Domains Discovered - Extracts domains from username (DOMAIN\user)
+✅ 💻 OS Distribution - Groups agents by Windows/Linux/macOS
+✅ 💎 Access Level - Shows privileged vs standard user count
+✅ 🔐 Transports - Lists protocols in use (MTLS, HTTP, DNS, etc.)
+✅ 🔗 Active Pivots - Shows if agents are pivoted (if detected)
+✅ ⚡ Recent Activity - Highlights NEW agents (<5min)
+
+The panel automatically analyzes your agent data and provides
+actionable intelligence for red team operations!
