@@ -197,8 +197,8 @@ func (m model) View() string {
 	// Create tactical panel (right side)
 	tacticalPanel := m.renderTacticalPanel()
 	
-	// Debug: Always try to show panel if we have agents
-	if len(m.agents) > 0 && m.termWidth > 0 && tacticalPanel != "" {
+	// If we have agents and a panel, show it alongside main content
+	if len(m.agents) > 0 && tacticalPanel != "" {
 		// Calculate dimensions
 		// Tactical panel is 35 chars wide + 4 for border/padding = ~39 actual width
 		panelWidth := 39
@@ -215,8 +215,14 @@ func (m model) View() string {
 		}
 		
 		// Calculate spacing needed to push panel to far right
+		// Use termWidth, with fallback to reasonable default
+		termWidth := m.termWidth
+		if termWidth == 0 {
+			termWidth = 180 // Fallback
+		}
+		
 		// Formula: termWidth - mainWidth - panelWidth - 2 (for safety margin)
-		spacingWidth := m.termWidth - mainWidth - panelWidth - 2
+		spacingWidth := termWidth - mainWidth - panelWidth - 2
 		if spacingWidth < 2 {
 			spacingWidth = 2 // Minimum spacing
 		}
@@ -824,11 +830,13 @@ func main() {
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("#00d7ff"))
 
-	// Initialize model
+	// Initialize model with default terminal size as fallback
 	m := model{
-		agents:  []Agent{},
-		spinner: s,
-		loading: true,
+		agents:     []Agent{},
+		spinner:    s,
+		loading:    true,
+		termWidth:  180, // Default fallback width
+		termHeight: 40,  // Default fallback height
 	}
 
 	// Create and run program with alt screen
