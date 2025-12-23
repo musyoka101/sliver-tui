@@ -27,19 +27,33 @@ var (
 	titleStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("#00d7ff")).
-			Border(lipgloss.RoundedBorder()).
+			Border(lipgloss.DoubleBorder()).
 			BorderForeground(lipgloss.Color("#00d7ff")).
-			Padding(0, 1)
+			Padding(0, 2).
+			MarginBottom(1)
 
 	logoStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#d75fff")).
 			Bold(true)
 
 	statusStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#00d7ff"))
+			Foreground(lipgloss.Color("#888888")).
+			Italic(true).
+			MarginBottom(1)
 
 	helpStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#626262"))
+
+	separatorStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#444444"))
+
+	statsStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#00d7ff")).
+			Bold(true).
+			Padding(0, 1)
+
+	agentLineStyle = lipgloss.NewStyle().
+			PaddingLeft(2)
 )
 
 // Agent represents a Sliver agent
@@ -126,21 +140,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) View() string {
 	if m.err != nil {
-		return fmt.Sprintf("Error: %v\n\nPress 'q' to quit, 'r' to retry", m.err)
+		return fmt.Sprintf("\n  ❌ Error: %v\n\n  Press 'q' to quit, 'r' to retry\n", m.err)
 	}
 
 	var lines []string
 
-	// Title
-	title := titleStyle.Render("🎯 SLIVER C2 - NETWORK TOPOLOGY VISUALIZATION")
+	// Title with better spacing
+	title := titleStyle.Render("🎯  SLIVER C2 - NETWORK TOPOLOGY VISUALIZATION")
+	lines = append(lines, "")
 	lines = append(lines, title)
-	lines = append(lines, "")
 
-	// Status
-	statusText := fmt.Sprintf("⏰ Last Update: %s  |  Press Ctrl+C to exit",
-		m.lastUpdate.Format("2006-01-02 15:04:05"))
+	// Status with softer styling
+	statusText := fmt.Sprintf("Last Update: %s  │  Press Ctrl+C to exit",
+		m.lastUpdate.Format("15:04:05"))
 	lines = append(lines, statusStyle.Render(statusText))
-	lines = append(lines, "")
 
 	// Logo
 	logo := []string{
@@ -151,10 +164,13 @@ func (m model) View() string {
 		"    ▀██▀    ",
 	}
 
-	// Agents with logo on left
+	// Agents with logo on left and better spacing
 	if len(m.agents) == 0 {
-		lines = append(lines, "No agents connected")
+		lines = append(lines, "")
+		lines = append(lines, "  No agents connected")
+		lines = append(lines, "")
 	} else {
+		lines = append(lines, "")
 		agentLines := m.renderAgents()
 		logoStart := len(agentLines)/2 - len(logo)/2
 		if logoStart < 0 {
@@ -168,17 +184,18 @@ func (m model) View() string {
 			} else {
 				logoLine = strings.Repeat(" ", 12)
 			}
-			lines = append(lines, logoLine+"      "+agentLine)
+			lines = append(lines, "  "+logoLine+"    "+agentLine)
 		}
 	}
 
-	// Stats footer
+	// Stats footer with better separator
 	lines = append(lines, "")
-	lines = append(lines, strings.Repeat("─", 80))
+	lines = append(lines, separatorStyle.Render(strings.Repeat("─", 90)))
+	lines = append(lines, "")
 	
-	statsLine := fmt.Sprintf("🟢 Active Sessions: %d  🟡 Active Beacons: %d  🔵 Total Compromised: %d",
-		m.stats.Sessions, m.stats.Beacons, m.stats.Compromised)
-	lines = append(lines, statsLine)
+	statsLine := fmt.Sprintf("🟢 Sessions: %d  │  🟡 Beacons: %d  │  🔵 Total: %d  │  🖥️  Hosts: %d",
+		m.stats.Sessions, m.stats.Beacons, m.stats.Compromised, m.stats.Hosts)
+	lines = append(lines, statsStyle.Render(statsLine))
 
 	// Show lost agents if any
 	trackerMutex.RLock()
@@ -186,12 +203,17 @@ func (m model) View() string {
 	trackerMutex.RUnlock()
 	
 	if lostCount > 0 {
-		lostLine := fmt.Sprintf("⚠️  Recently Lost Agents: %d (shown for %d minutes)",
+		lostLine := fmt.Sprintf("⚠️  Recently Lost: %d (displayed for %d min)",
 			lostCount, int(lostAgentTimeout.Minutes()))
 		lines = append(lines, lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#ff9900")).
+			Italic(true).
 			Render(lostLine))
 	}
+
+	lines = append(lines, "")
+	lines = append(lines, helpStyle.Render("  Press 'r' to refresh manually  │  'q' to quit"))
+	lines = append(lines, "")
 
 	return strings.Join(lines, "\n")
 }
@@ -214,16 +236,23 @@ func (m model) renderAgentTree(agent Agent, depth int) []string {
 	var lines []string
 	
 	// Render current agent
-	indent := strings.Repeat("    ", depth)
+	indent := strings.Repeat("  ", depth)
 	line := m.renderAgentLine(agent)
 	
 	if depth > 0 {
-		// Add tree connector for child agents
-		connector := "└──▶ "
+		// Add tree connector for child agents with better styling
+		connector := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#6272a4")).
+			Render("  ╰─▶ ")
 		line = indent + connector + line
 	}
 	
 	lines = append(lines, line)
+	
+	// Add spacing between agents at root level
+	if depth == 0 && len(agent.Children) == 0 {
+		lines = append(lines, "")
+	}
 	
 	// Recursively render children
 	for _, child := range agent.Children {
@@ -267,13 +296,13 @@ func (m model) renderAgentLine(agent Agent) string {
 	if agent.IsDead {
 		usernameColor = lipgloss.Color("#626262") // Gray
 	} else if agent.IsPrivileged {
-		usernameColor = lipgloss.Color("#ff0000") // Red
+		usernameColor = lipgloss.Color("#ff5555") // Softer red
 	} else {
-		usernameColor = lipgloss.Color("#00d7ff") // Cyan
+		usernameColor = lipgloss.Color("#50fa7b") // Softer cyan/green
 	}
 
 	// Protocol color
-	protocolColor := lipgloss.Color("#00d7ff") // Cyan for MTLS
+	protocolColor := lipgloss.Color("#8be9fd") // Softer cyan for MTLS
 	if agent.IsDead {
 		protocolColor = lipgloss.Color("#626262") // Gray for dead
 	}
@@ -281,27 +310,27 @@ func (m model) renderAgentLine(agent Agent) string {
 	// Privilege badge
 	privBadge := ""
 	if agent.IsPrivileged && !agent.IsDead {
-		privBadge = " 💎"
+		privBadge = "  💎"
 	}
 
 	// NEW badge
 	newBadge := ""
 	if agent.IsNew && !agent.IsDead {
-		newBadge = " " + lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#ffff00")).
+		newBadge = "  " + lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#f1fa8c")).
 			Bold(true).
-			Render("✨ NEW!")
+			Render("✨ NEW")
 	}
 
-	// Build the line
-	line := fmt.Sprintf("——[ %s ]——▶ %s %s  %s%s%s  %s (%s)",
+	// Build the line with better spacing
+	line := fmt.Sprintf("─[ %s ]─▶  %s %s   %s%s%s   %s  (%s)",
 		lipgloss.NewStyle().Foreground(protocolColor).Render(agent.Transport),
 		lipgloss.NewStyle().Foreground(statusColor).Render(statusIcon),
 		osIcon,
 		lipgloss.NewStyle().Foreground(usernameColor).Bold(true).Render(fmt.Sprintf("%s@%s", agent.Username, agent.Hostname)),
 		privBadge,
 		newBadge,
-		lipgloss.NewStyle().Foreground(lipgloss.Color("#626262")).Render(agent.ID[:8]),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("#6272a4")).Render(agent.ID[:8]),
 		lipgloss.NewStyle().Foreground(statusColor).Render(func() string {
 			if agent.IsDead {
 				return "dead"
