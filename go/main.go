@@ -84,12 +84,14 @@ type Stats struct {
 
 // Model represents the application state
 type model struct {
-	agents     []Agent
-	stats      Stats
-	spinner    spinner.Model
-	loading    bool
-	err        error
-	lastUpdate time.Time
+	agents       []Agent
+	stats        Stats
+	spinner      spinner.Model
+	loading      bool
+	err          error
+	lastUpdate   time.Time
+	termWidth    int // Terminal width for responsive layout
+	termHeight   int // Terminal height
 }
 
 func (m model) Init() tea.Cmd {
@@ -109,6 +111,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.loading = true
 			return m, fetchAgentsCmd
 		}
+
+	case tea.WindowSizeMsg:
+		// Capture terminal dimensions for responsive layout
+		m.termWidth = msg.Width
+		m.termHeight = msg.Height
+		return m, nil
 
 	case spinner.TickMsg:
 		var cmd tea.Cmd
@@ -145,8 +153,38 @@ func (m model) View() string {
 	// Create tactical panel (right side)
 	tacticalPanel := m.renderTacticalPanel()
 	
-	// Join horizontally with some spacing
-	return lipgloss.JoinHorizontal(lipgloss.Top, mainContent, "  ", tacticalPanel)
+	// If no terminal width yet or no panel, return just main content
+	if m.termWidth == 0 || tacticalPanel == "" {
+		return mainContent
+	}
+	
+	// Calculate dimensions
+	// Tactical panel is 35 chars wide + 4 for border/padding = ~39 actual width
+	panelWidth := 39
+	
+	// Get main content width (approximate based on longest line)
+	mainLines := strings.Split(mainContent, "\n")
+	mainWidth := 0
+	for _, line := range mainLines {
+		// Use lipgloss.Width to account for ANSI codes
+		lineWidth := lipgloss.Width(line)
+		if lineWidth > mainWidth {
+			mainWidth = lineWidth
+		}
+	}
+	
+	// Calculate spacing needed to push panel to far right
+	// Formula: termWidth - mainWidth - panelWidth - 2 (for safety margin)
+	spacingWidth := m.termWidth - mainWidth - panelWidth - 2
+	if spacingWidth < 2 {
+		spacingWidth = 2 // Minimum spacing
+	}
+	
+	// Create spacing string
+	spacing := strings.Repeat(" ", spacingWidth)
+	
+	// Join horizontally with calculated spacing
+	return lipgloss.JoinHorizontal(lipgloss.Top, mainContent, spacing, tacticalPanel)
 }
 
 func (m model) renderMainContent() string {
