@@ -159,6 +159,36 @@ def is_privileged(username, uid, os_name):
     return False
 
 
+def is_dead_or_late(is_dead, next_checkin, agent_type):
+    """
+    Check if agent is dead or late for check-in
+    
+    Args:
+        is_dead: Boolean indicating if agent is marked as dead
+        next_checkin: Next expected check-in time (nanoseconds since epoch)
+        agent_type: 'session' or 'beacon'
+    
+    Returns:
+        'dead' if agent is dead
+        'late' if beacon missed its check-in window
+        'alive' if agent is active and on schedule
+    """
+    if is_dead:
+        return 'dead'
+    
+    # For beacons, check if they're late for check-in
+    if agent_type == 'beacon' and next_checkin:
+        # Convert nanoseconds to seconds
+        next_checkin_sec = next_checkin / 1e9
+        current_time = time.time()
+        
+        # If current time is past the next check-in window, beacon is late
+        if current_time > next_checkin_sec:
+            return 'late'
+    
+    return 'alive'
+
+
 def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None):
     """Draw the main network graph visualization with hierarchical tree"""
     output = []
@@ -209,15 +239,38 @@ def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None):
         # Check if privileged
         privileged = is_privileged(username, uid, os_name)
         
-        # Determine colors
-        if is_session:
-            host_color = Colors.GREEN
-            type_label = "session"
-        else:
-            host_color = Colors.YELLOW
-            type_label = "beacon"
+        # Check if agent is dead or late
+        agent_status = is_dead_or_late(
+            agent.get('IsDead', False),
+            agent.get('NextCheckin', 0),
+            agent['type']
+        )
         
-        protocol_color = get_protocol_color(transport)
+        # Determine colors based on status
+        if agent_status == 'dead':
+            host_color = Colors.GRAY
+            username_color = Colors.GRAY
+            protocol_color = Colors.GRAY
+            status_marker = f" {Colors.RED}💀{Colors.ENDC}"
+            type_label = "session [DEAD]" if is_session else "beacon [DEAD]"
+        elif agent_status == 'late':
+            host_color = Colors.YELLOW
+            username_color = Colors.YELLOW
+            protocol_color = get_protocol_color(transport)
+            status_marker = f" {Colors.YELLOW}⚠️{Colors.ENDC}"
+            type_label = "session [LATE]" if is_session else "beacon [LATE]"
+        else:
+            # Alive - normal colors
+            if is_session:
+                host_color = Colors.GREEN
+                type_label = "session"
+            else:
+                host_color = Colors.YELLOW
+                type_label = "beacon"
+            
+            protocol_color = get_protocol_color(transport)
+            username_color = Colors.RED if privileged else Colors.CYAN
+            status_marker = ""
         
         # Build the line for root agent
         if line_count >= logo_start and line_count < logo_start + len(logo_lines):
@@ -243,14 +296,11 @@ def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None):
         has_children = len(agent.get('children', [])) > 0
         tree_branch = "├─" if has_children else "──"
         
-        # Username color - red for privileged, cyan for normal
-        username_color = Colors.RED if privileged else Colors.CYAN
-        
         # Format root agent line
         output.append(
             f"  {logo_line}      {tree_branch}─[ {protocol_color}{transport.upper():^6}{Colors.ENDC} ]───▶ "
             f"{host_color}{status_icon}{Colors.ENDC} {host_color}{pc_icon}{Colors.ENDC} "
-            f"{Colors.BOLD}{username_color}{username}@{hostname}{Colors.ENDC}{priv_badge}  "
+            f"{Colors.BOLD}{username_color}{username}@{hostname}{Colors.ENDC}{priv_badge}{status_marker}  "
             f"{Colors.GRAY}{host_id} ({type_label}){Colors.ENDC}"
         )
         line_count += 1
@@ -271,15 +321,38 @@ def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None):
             # Check if child is privileged
             child_privileged = is_privileged(child_username, child_uid, child_os)
             
-            # Determine child colors
-            if child_is_session:
-                child_color = Colors.GREEN
-                child_type = "session"
-            else:
-                child_color = Colors.YELLOW
-                child_type = "beacon"
+            # Check if child is dead or late
+            child_status_check = is_dead_or_late(
+                child.get('IsDead', False),
+                child.get('NextCheckin', 0),
+                child['type']
+            )
             
-            child_protocol_color = get_protocol_color(child_transport)
+            # Determine child colors based on status
+            if child_status_check == 'dead':
+                child_color = Colors.GRAY
+                child_username_color = Colors.GRAY
+                child_protocol_color = Colors.GRAY
+                child_status_marker = f" {Colors.RED}💀{Colors.ENDC}"
+                child_type = "session [DEAD]" if child_is_session else "beacon [DEAD]"
+            elif child_status_check == 'late':
+                child_color = Colors.YELLOW
+                child_username_color = Colors.YELLOW
+                child_protocol_color = get_protocol_color(child_transport)
+                child_status_marker = f" {Colors.YELLOW}⚠️{Colors.ENDC}"
+                child_type = "session [LATE]" if child_is_session else "beacon [LATE]"
+            else:
+                # Alive - normal colors
+                if child_is_session:
+                    child_color = Colors.GREEN
+                    child_type = "session"
+                else:
+                    child_color = Colors.YELLOW
+                    child_type = "beacon"
+                
+                child_protocol_color = get_protocol_color(child_transport)
+                child_username_color = Colors.RED if child_privileged else Colors.CYAN
+                child_status_marker = ""
             
             # Logo line
             if line_count >= logo_start and line_count < logo_start + len(logo_lines):
@@ -304,14 +377,11 @@ def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None):
             # Tree branch for child
             child_branch = "└─" if is_last_child else "├─"
             
-            # Child username color - red for privileged, cyan for normal
-            child_username_color = Colors.RED if child_privileged else Colors.CYAN
-            
             # Format child line with indentation
             output.append(
                 f"  {logo_line}      │  {child_branch}[ {child_protocol_color}{child_transport.upper():^6}{Colors.ENDC} ]──▶ "
                 f"{child_color}{child_status}{Colors.ENDC} {child_color}{child_icon}{Colors.ENDC} "
-                f"{Colors.BOLD}{child_username_color}{child_username}@{child_hostname}{Colors.ENDC}{child_priv_badge}  "
+                f"{Colors.BOLD}{child_username_color}{child_username}@{child_hostname}{Colors.ENDC}{child_priv_badge}{child_status_marker}  "
                 f"{Colors.GRAY}{child_id} ({child_type}) {Colors.MAGENTA}↪ pivoted{Colors.ENDC}"
             )
             line_count += 1
@@ -350,6 +420,9 @@ def build_agent_tree(sessions, beacons):
             'PeerID': s.PeerID,
             'RemoteAddress': s.RemoteAddress,
             'UID': s.UID,
+            'IsDead': s.IsDead,
+            'LastCheckin': getattr(s, 'LastCheckin', 0),
+            'NextCheckin': 0,  # Sessions don't have NextCheckin
             'type': 'session',
             'children': []
         }
@@ -365,6 +438,9 @@ def build_agent_tree(sessions, beacons):
             'ProxyURL': b.ProxyURL,
             'RemoteAddress': b.RemoteAddress,
             'UID': b.UID,
+            'IsDead': b.IsDead,
+            'LastCheckin': b.LastCheckin,
+            'NextCheckin': b.NextCheckin,
             'type': 'beacon',
             'children': []
         }
