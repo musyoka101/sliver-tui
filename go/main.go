@@ -5,11 +5,21 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+)
+
+// Global tracking for agent changes
+var (
+	agentTracker     = make(map[string]time.Time) // ID -> first seen time
+	trackerMutex     sync.RWMutex
+	newAgentTimeout  = 5 * time.Minute // Mark as NEW if seen < 5 minutes ago
+	lostAgents       = make(map[string]Agent)
+	lostAgentTimeout = 5 * time.Minute
 )
 
 // Styles
@@ -43,7 +53,11 @@ type Agent struct {
 	IsSession     bool
 	IsPrivileged  bool
 	IsDead        bool
-	Children      []Agent
+	IsNew         bool      // Newly discovered (< 5 min)
+	FirstSeen     time.Time // When first discovered
+	ProxyURL      string    // Non-empty if pivoted through another agent
+	ParentID      string    // ID of parent agent (if pivoted)
+	Children      []Agent   // Child agents (pivoted through this one)
 }
 
 // Stats holds statistics
@@ -166,16 +180,57 @@ func (m model) View() string {
 		m.stats.Sessions, m.stats.Beacons, m.stats.Compromised)
 	lines = append(lines, statsLine)
 
+	// Show lost agents if any
+	trackerMutex.RLock()
+	lostCount := len(lostAgents)
+	trackerMutex.RUnlock()
+	
+	if lostCount > 0 {
+		lostLine := fmt.Sprintf("⚠️  Recently Lost Agents: %d (shown for %d minutes)",
+			lostCount, int(lostAgentTimeout.Minutes()))
+		lines = append(lines, lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#ff9900")).
+			Render(lostLine))
+	}
+
 	return strings.Join(lines, "\n")
 }
 
 func (m model) renderAgents() []string {
 	var lines []string
 
-	for _, agent := range m.agents {
-		lines = append(lines, m.renderAgentLine(agent))
+	// Build hierarchical tree
+	tree := buildAgentTree(m.agents)
+
+	// Render tree with indentation
+	for _, agent := range tree {
+		lines = append(lines, m.renderAgentTree(agent, 0)...)
 	}
 
+	return lines
+}
+
+func (m model) renderAgentTree(agent Agent, depth int) []string {
+	var lines []string
+	
+	// Render current agent
+	indent := strings.Repeat("    ", depth)
+	line := m.renderAgentLine(agent)
+	
+	if depth > 0 {
+		// Add tree connector for child agents
+		connector := "└──▶ "
+		line = indent + connector + line
+	}
+	
+	lines = append(lines, line)
+	
+	// Recursively render children
+	for _, child := range agent.Children {
+		childLines := m.renderAgentTree(child, depth+1)
+		lines = append(lines, childLines...)
+	}
+	
 	return lines
 }
 
@@ -184,7 +239,10 @@ func (m model) renderAgentLine(agent Agent) string {
 	var statusIcon string
 	var statusColor lipgloss.Color
 	
-	if agent.IsSession {
+	if agent.IsDead {
+		statusIcon = "💀"
+		statusColor = lipgloss.Color("#626262") // Gray for dead
+	} else if agent.IsSession {
 		statusIcon = "◆"
 		statusColor = lipgloss.Color("#00ff00") // Green
 	} else {
@@ -204,9 +262,11 @@ func (m model) renderAgentLine(agent Agent) string {
 		osIcon = "🐧"
 	}
 
-	// Username color
+	// Username color (gray if dead)
 	var usernameColor lipgloss.Color
-	if agent.IsPrivileged {
+	if agent.IsDead {
+		usernameColor = lipgloss.Color("#626262") // Gray
+	} else if agent.IsPrivileged {
 		usernameColor = lipgloss.Color("#ff0000") // Red
 	} else {
 		usernameColor = lipgloss.Color("#00d7ff") // Cyan
@@ -214,23 +274,38 @@ func (m model) renderAgentLine(agent Agent) string {
 
 	// Protocol color
 	protocolColor := lipgloss.Color("#00d7ff") // Cyan for MTLS
+	if agent.IsDead {
+		protocolColor = lipgloss.Color("#626262") // Gray for dead
+	}
 
 	// Privilege badge
 	privBadge := ""
-	if agent.IsPrivileged {
+	if agent.IsPrivileged && !agent.IsDead {
 		privBadge = " 💎"
 	}
 
+	// NEW badge
+	newBadge := ""
+	if agent.IsNew && !agent.IsDead {
+		newBadge = " " + lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#ffff00")).
+			Bold(true).
+			Render("✨ NEW!")
+	}
+
 	// Build the line
-	line := fmt.Sprintf("——[ %s ]——▶ %s %s  %s%s  %s (%s)",
+	line := fmt.Sprintf("——[ %s ]——▶ %s %s  %s%s%s  %s (%s)",
 		lipgloss.NewStyle().Foreground(protocolColor).Render(agent.Transport),
 		lipgloss.NewStyle().Foreground(statusColor).Render(statusIcon),
 		osIcon,
 		lipgloss.NewStyle().Foreground(usernameColor).Bold(true).Render(fmt.Sprintf("%s@%s", agent.Username, agent.Hostname)),
 		privBadge,
+		newBadge,
 		lipgloss.NewStyle().Foreground(lipgloss.Color("#626262")).Render(agent.ID[:8]),
 		lipgloss.NewStyle().Foreground(statusColor).Render(func() string {
-			if agent.IsSession {
+			if agent.IsDead {
+				return "dead"
+			} else if agent.IsSession {
 				return "session"
 			}
 			return "beacon"
@@ -238,6 +313,123 @@ func (m model) renderAgentLine(agent Agent) string {
 	)
 
 	return line
+}
+
+// buildAgentTree organizes agents into a hierarchical tree based on pivot relationships
+func buildAgentTree(agents []Agent) []Agent {
+	// Create maps for quick lookup
+	agentMap := make(map[string]*Agent)
+	for i := range agents {
+		agentMap[agents[i].ID] = &agents[i]
+	}
+
+	// Identify parent-child relationships
+	// ProxyURL format can be like "socks5://agent-id" or contain agent ID
+	var rootAgents []Agent
+	
+	for i := range agents {
+		if agents[i].ProxyURL == "" {
+			// This is a root agent (directly connected to C2)
+			rootAgents = append(rootAgents, agents[i])
+		} else {
+			// This agent is pivoted through another
+			// Try to extract parent ID from ProxyURL
+			agents[i].ParentID = extractParentID(agents[i].ProxyURL, agentMap)
+		}
+	}
+
+	// Build tree structure
+	for i := range rootAgents {
+		rootAgents[i].Children = findChildren(rootAgents[i].ID, agents)
+	}
+
+	// If no root agents found, return all agents as roots
+	if len(rootAgents) == 0 {
+		return agents
+	}
+
+	return rootAgents
+}
+
+// extractParentID tries to extract parent agent ID from ProxyURL
+func extractParentID(proxyURL string, agentMap map[string]*Agent) string {
+	// ProxyURL might be in format like: "socks5://127.0.0.1:9050"
+	// For now, we'll look for agents with matching connection info
+	// This is a simplified approach - real implementation might need protocol-specific parsing
+	for id := range agentMap {
+		if strings.Contains(proxyURL, id) {
+			return id
+		}
+	}
+	return ""
+}
+
+// findChildren recursively finds all children of a given parent agent
+func findChildren(parentID string, allAgents []Agent) []Agent {
+	var children []Agent
+	
+	for _, agent := range allAgents {
+		if agent.ParentID == parentID {
+			// This agent is a child of parentID
+			child := agent
+			// Recursively find this child's children
+			child.Children = findChildren(child.ID, allAgents)
+			children = append(children, child)
+		}
+	}
+	
+	return children
+}
+
+// trackAgentChanges updates the tracking maps for new/lost agents
+func trackAgentChanges(agents []Agent) []Agent {
+	trackerMutex.Lock()
+	defer trackerMutex.Unlock()
+
+	now := time.Now()
+	currentAgentIDs := make(map[string]bool)
+
+	// Process current agents
+	for i := range agents {
+		agentID := agents[i].ID
+		currentAgentIDs[agentID] = true
+
+		// Check if this is a new agent
+		if firstSeen, exists := agentTracker[agentID]; exists {
+			agents[i].FirstSeen = firstSeen
+			agents[i].IsNew = now.Sub(firstSeen) < newAgentTimeout
+		} else {
+			// First time seeing this agent
+			agentTracker[agentID] = now
+			agents[i].FirstSeen = now
+			agents[i].IsNew = true
+		}
+	}
+
+	// Find lost agents (previously tracked but not in current list)
+	for agentID, firstSeen := range agentTracker {
+		if !currentAgentIDs[agentID] {
+			// This agent is missing, add to lost agents if not already there
+			if _, exists := lostAgents[agentID]; !exists {
+				// Create a lost agent entry (we don't have full data)
+				lostAgents[agentID] = Agent{
+					ID:        agentID,
+					FirstSeen: firstSeen,
+					IsDead:    true,
+				}
+			}
+		}
+	}
+
+	// Clean up old lost agents
+	for agentID, agent := range lostAgents {
+		if now.Sub(agent.FirstSeen) > lostAgentTimeout {
+			delete(lostAgents, agentID)
+			delete(agentTracker, agentID)
+		}
+	}
+
+	return agents
 }
 
 // Messages
@@ -254,65 +446,17 @@ type errMsg struct {
 
 // Commands
 func fetchAgentsCmd() tea.Msg {
-	// TODO: Connect to Sliver and fetch real data
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// Connect to Sliver and fetch real data
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// Simulate network delay
-	time.Sleep(300 * time.Millisecond)
-
-	// Mock data
-	agents := []Agent{
-		{
-			ID:            "22bf4a82-abc123",
-			Hostname:      "cywebdw",
-			Username:      "NT AUTHORITY\\NETWORK SERVICE",
-			OS:            "windows",
-			Transport:     "MTLS",
-			RemoteAddress: "10.10.110.10:50199",
-			IsSession:     true,
-			IsPrivileged:  false,
-		},
-		{
-			ID:            "4370d26a-def456",
-			Hostname:      "m3dc",
-			Username:      "M3C\\Administrator",
-			OS:            "windows",
-			Transport:     "MTLS",
-			RemoteAddress: "10.10.110.250:63805",
-			IsSession:     false,
-			IsPrivileged:  true,
-		},
-		{
-			ID:            "b773f522-ghi789",
-			Hostname:      "m3webaw",
-			Username:      "M3C\\Administrator",
-			OS:            "windows",
-			Transport:     "MTLS",
-			RemoteAddress: "10.10.110.250:21392",
-			IsSession:     false,
-			IsPrivileged:  true,
-		},
-		{
-			ID:            "263f4501-jkl012",
-			Hostname:      "cywebdw",
-			Username:      "NT AUTHORITY\\NETWORK SERVICE",
-			OS:            "windows",
-			Transport:     "MTLS",
-			RemoteAddress: "10.10.110.10:49908",
-			IsSession:     false,
-			IsPrivileged:  false,
-		},
+	agents, stats, err := FetchAgents(ctx)
+	if err != nil {
+		return errMsg{err: err}
 	}
 
-	stats := Stats{
-		Sessions:    1,
-		Beacons:     3,
-		Hosts:       3,
-		Compromised: 4,
-	}
-
-	_ = ctx
+	// Track agent changes (NEW badges, lost agents)
+	agents = trackAgentChanges(agents)
 
 	return agentsMsg{
 		agents: agents,
