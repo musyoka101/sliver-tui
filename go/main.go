@@ -401,7 +401,7 @@ func (m model) renderTacticalPanel() string {
 	lines = append(lines, "")
 
 	// Analyze data
-	subnets := make(map[string]int)
+	subnetHosts := make(map[string]map[string]bool) // subnet -> unique hostnames
 	domains := make(map[string]int)
 	osCount := make(map[string]int)
 	transports := make(map[string]int)
@@ -410,12 +410,15 @@ func (m model) renderTacticalPanel() string {
 	newCount := 0
 
 	for _, agent := range m.agents {
-		// Extract subnet (first 3 octets)
+		// Extract subnet (first 3 octets) and track unique hostnames
 		if agent.RemoteAddress != "" {
 			parts := strings.Split(agent.RemoteAddress, ".")
 			if len(parts) >= 3 {
 				subnet := strings.Join(parts[:3], ".") + ".0/24"
-				subnets[subnet]++
+				if subnetHosts[subnet] == nil {
+					subnetHosts[subnet] = make(map[string]bool)
+				}
+				subnetHosts[subnet][agent.Hostname] = true // Track unique hostnames
 			}
 		}
 
@@ -454,11 +457,12 @@ func (m model) renderTacticalPanel() string {
 
 	// Compromised Subnets
 	lines = append(lines, sectionStyle.Render("🌐 Compromised Subnets"))
-	if len(subnets) > 0 {
-		for subnet, count := range subnets {
+	if len(subnetHosts) > 0 {
+		for subnet, hosts := range subnetHosts {
+			hostCount := len(hosts)
 			lines = append(lines, fmt.Sprintf("  %s %s",
 				valueStyle.Render(subnet),
-				mutedStyle.Render(fmt.Sprintf("(%d hosts)", count))))
+				mutedStyle.Render(fmt.Sprintf("(%d hosts)", hostCount))))
 		}
 	} else {
 		lines = append(lines, mutedStyle.Render("  No subnet data"))
