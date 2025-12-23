@@ -290,6 +290,68 @@ def count_unique_hosts(agent_tree):
     return len(unique_hostnames)
 
 
+def calculate_stats(agent_tree):
+    """
+    Calculate detailed statistics from agent tree
+    
+    Returns:
+        dict with various statistics
+    """
+    stats = {
+        'total_agents': 0,
+        'privileged': 0,
+        'unprivileged': 0,
+        'windows': 0,
+        'linux': 0,
+        'other_os': 0,
+        'protocols': {},
+        'new_agents': 0,
+        'dead_agents': 0,
+    }
+    
+    def count_agent(agent):
+        stats['total_agents'] += 1
+        
+        # Count privileged
+        username = agent.get('Username', '')
+        uid = agent.get('UID', '')
+        os_name = agent.get('OS', '')
+        
+        if is_privileged(username, uid, os_name):
+            stats['privileged'] += 1
+        else:
+            stats['unprivileged'] += 1
+        
+        # Count OS types
+        os_lower = os_name.lower()
+        if 'windows' in os_lower:
+            stats['windows'] += 1
+        elif 'linux' in os_lower:
+            stats['linux'] += 1
+        else:
+            stats['other_os'] += 1
+        
+        # Count protocols
+        transport = agent.get('Transport', 'unknown').upper()
+        stats['protocols'][transport] = stats['protocols'].get(transport, 0) + 1
+        
+        # Count new agents
+        if is_agent_new(agent['ID']):
+            stats['new_agents'] += 1
+        
+        # Count dead agents
+        if is_dead_or_late(agent.get('IsDead', False), 0, agent['type']) == 'dead':
+            stats['dead_agents'] += 1
+    
+    # Process all agents in tree
+    for agent in agent_tree:
+        count_agent(agent)
+        for child in agent.get('children', []):
+            count_agent(child)
+    
+    return stats
+
+
 def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None, changes=None):
     """Draw the main network graph visualization with hierarchical tree"""
     output = []
@@ -329,15 +391,15 @@ def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None, chan
     # Calculate total lines needed for content (with spacing)
     content_lines = []
     for idx, agent in enumerate(agent_tree):
-        # Root agent line
-        content_lines.append(1)
+        # Root agent: 3 lines (username@host, ID, IP)
+        content_lines.append(3)
         
         # Children with vertical connectors
         children = agent.get('children', [])
         if children:
             for child_idx, child in enumerate(children):
                 content_lines.append(1)  # Vertical line
-                content_lines.append(1)  # Child agent line
+                content_lines.append(3)  # Child agent: 3 lines (username@host, ID, IP)
         
         # Spacing between root agents (except last)
         if idx < len(agent_tree) - 1:
@@ -416,13 +478,31 @@ def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None, chan
         if is_agent_new(agent['ID']):
             new_badge = f" {Colors.GREEN}✨ NEW!{Colors.ENDC}"
         
-        # Format root agent line with longer connectors
+        # Format root agent line with longer connectors (multi-line display)
+        remote_ip = agent.get('RemoteAddress', 'Unknown')
+        
+        # Line 1: Protocol connector + icon + username@hostname
         logo_line = get_logo_line(line_count)
         output.append(
             f"  {logo_line}      ╰────────[ {protocol_color}{transport.upper():^6}{Colors.ENDC} ]────────▶ "
             f"{host_color}{status_icon}{Colors.ENDC} {host_color}{pc_icon}{Colors.ENDC} "
-            f"{Colors.BOLD}{username_color}{username}@{hostname}{Colors.ENDC}{priv_badge}{status_marker}  "
-            f"{Colors.GRAY}{host_id} ({type_label}){Colors.ENDC}{new_badge}"
+            f"{Colors.BOLD}{username_color}{username}@{hostname}{Colors.ENDC}{priv_badge}{status_marker}"
+        )
+        line_count += 1
+        
+        # Line 2: ID and type with NEW badge
+        logo_line = get_logo_line(line_count)
+        output.append(
+            f"  {logo_line}                                               "
+            f"└─ ID: {Colors.GRAY}{host_id} ({type_label}){Colors.ENDC}{new_badge}"
+        )
+        line_count += 1
+        
+        # Line 3: IP address
+        logo_line = get_logo_line(line_count)
+        output.append(
+            f"  {logo_line}                                               "
+            f"└─ IP: {Colors.CYAN}{remote_ip}{Colors.ENDC}"
         )
         line_count += 1
         
@@ -497,13 +577,32 @@ def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None, chan
             # Tree branch for child
             child_branch = "╰─" if is_last_child else "├─"
             
-            # Format child line with indentation
+            # Format child line with indentation (multi-line display)
+            child_remote_ip = child.get('RemoteAddress', 'Unknown')
+            
+            # Line 1: Protocol connector + icon + username@hostname
             logo_line = get_logo_line(line_count)
             output.append(
                 f"  {logo_line}           {child_branch}───────[ {child_protocol_color}{child_transport.upper():^6}{Colors.ENDC} ]────────▶ "
                 f"{child_color}{child_status}{Colors.ENDC} {child_color}{child_icon}{Colors.ENDC} "
-                f"{Colors.BOLD}{child_username_color}{child_username}@{child_hostname}{Colors.ENDC}{child_priv_badge}{child_status_marker}  "
-                f"{Colors.GRAY}{child_id} ({child_type}){Colors.ENDC}{child_new_badge}"
+                f"{Colors.BOLD}{child_username_color}{child_username}@{child_hostname}{Colors.ENDC}{child_priv_badge}{child_status_marker}"
+            )
+            line_count += 1
+            
+            # Line 2: ID and type with NEW badge
+            logo_line = get_logo_line(line_count)
+            continuation = "│" if not is_last_child else " "
+            output.append(
+                f"  {logo_line}           {continuation}                                      "
+                f"└─ ID: {Colors.GRAY}{child_id} ({child_type}){Colors.ENDC}{child_new_badge}"
+            )
+            line_count += 1
+            
+            # Line 3: IP address
+            logo_line = get_logo_line(line_count)
+            output.append(
+                f"  {logo_line}           {continuation}                                      "
+                f"└─ IP: {Colors.CYAN}{child_remote_ip}{Colors.ENDC}"
             )
             line_count += 1
         
@@ -516,9 +615,46 @@ def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None, chan
             output.append(f"  {logo_line}")
             line_count += 1
     
+    # Calculate detailed statistics
+    stats = calculate_stats(agent_tree)
+    
     output.append("")
-    output.append(f"{Colors.GRAY}{'─' * 80}{Colors.ENDC}")
-    output.append(f"  🟢 Active Sessions: {Colors.BOLD}{Colors.GREEN}{total_sessions}{Colors.ENDC}  🟡 Active Beacons: {Colors.BOLD}{Colors.YELLOW}{total_beacons}{Colors.ENDC}  🔵 Total Compromised: {Colors.BOLD}{Colors.CYAN}{unique_hosts}{Colors.ENDC}")
+    output.append(f"{Colors.GRAY}{'━' * 80}{Colors.ENDC}")
+    
+    # Compact single-line stats footer
+    stats_line = f"🟢 Sessions: {Colors.BOLD}{Colors.GREEN}{total_sessions}{Colors.ENDC}  "
+    stats_line += f"🟡 Beacons: {Colors.BOLD}{Colors.YELLOW}{total_beacons}{Colors.ENDC}  "
+    stats_line += f"🔵 Hosts: {Colors.BOLD}{Colors.CYAN}{unique_hosts}{Colors.ENDC}  "
+    
+    if stats['new_agents'] > 0:
+        stats_line += f"✨ New: {Colors.BOLD}{Colors.GREEN}{stats['new_agents']}{Colors.ENDC}  "
+    
+    stats_line += f"🔴 Privileged: {Colors.BOLD}{Colors.RED}{stats['privileged']}{Colors.ENDC}  "
+    stats_line += f"🟢 Standard: {Colors.BOLD}{Colors.GREEN}{stats['unprivileged']}{Colors.ENDC}  "
+    
+    # OS breakdown
+    stats_line += f"💻 OS: "
+    if stats['windows'] > 0:
+        stats_line += f"{Colors.BOLD}{stats['windows']}{Colors.ENDC}W"
+    if stats['linux'] > 0:
+        if stats['windows'] > 0:
+            stats_line += " "
+        stats_line += f"{Colors.BOLD}{stats['linux']}{Colors.ENDC}L"
+    if stats['other_os'] > 0:
+        if stats['windows'] > 0 or stats['linux'] > 0:
+            stats_line += " "
+        stats_line += f"{Colors.BOLD}{stats['other_os']}{Colors.ENDC}O"
+    
+    stats_line += f"  🔗 Protocols: "
+    
+    # Protocol breakdown
+    proto_parts = []
+    for proto, count in sorted(stats['protocols'].items()):
+        proto_color = get_protocol_color(proto.lower())
+        proto_parts.append(f"{proto_color}{proto}{Colors.ENDC}({Colors.BOLD}{count}{Colors.ENDC})")
+    stats_line += " ".join(proto_parts)
+    
+    output.append(stats_line)
     
     # Display recently lost agents
     if LOST_AGENTS:
