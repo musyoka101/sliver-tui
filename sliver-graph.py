@@ -161,30 +161,22 @@ def is_privileged(username, uid, os_name):
 
 def is_dead_or_late(is_dead, next_checkin, agent_type):
     """
-    Check if agent is dead or late for check-in
+    Check if agent is dead
     
     Args:
         is_dead: Boolean indicating if agent is marked as dead
-        next_checkin: Next expected check-in time (nanoseconds since epoch)
+        next_checkin: Next expected check-in time (not used for beacons due to jitter)
         agent_type: 'session' or 'beacon'
     
     Returns:
-        'dead' if agent is dead
-        'late' if beacon missed its check-in window
-        'alive' if agent is active and on schedule
+        'dead' if agent is marked as dead by Sliver
+        'alive' if agent is active
+        
+    Note: We don't check 'late' for beacons because they use sleep intervals
+    with jitter, so NextCheckin is not a reliable indicator of health.
     """
     if is_dead:
         return 'dead'
-    
-    # For beacons, check if they're late for check-in
-    if agent_type == 'beacon' and next_checkin:
-        # Convert nanoseconds to seconds
-        next_checkin_sec = next_checkin / 1e9
-        current_time = time.time()
-        
-        # If current time is past the next check-in window, beacon is late
-        if current_time > next_checkin_sec:
-            return 'late'
     
     return 'alive'
 
@@ -253,12 +245,6 @@ def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None):
             protocol_color = Colors.GRAY
             status_marker = f" {Colors.RED}💀{Colors.ENDC}"
             type_label = "session [DEAD]" if is_session else "beacon [DEAD]"
-        elif agent_status == 'late':
-            host_color = Colors.YELLOW
-            username_color = Colors.YELLOW
-            protocol_color = get_protocol_color(transport)
-            status_marker = f" {Colors.YELLOW}⚠️{Colors.ENDC}"
-            type_label = "session [LATE]" if is_session else "beacon [LATE]"
         else:
             # Alive - normal colors
             if is_session:
@@ -335,12 +321,6 @@ def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None):
                 child_protocol_color = Colors.GRAY
                 child_status_marker = f" {Colors.RED}💀{Colors.ENDC}"
                 child_type = "session [DEAD]" if child_is_session else "beacon [DEAD]"
-            elif child_status_check == 'late':
-                child_color = Colors.YELLOW
-                child_username_color = Colors.YELLOW
-                child_protocol_color = get_protocol_color(child_transport)
-                child_status_marker = f" {Colors.YELLOW}⚠️{Colors.ENDC}"
-                child_type = "session [LATE]" if child_is_session else "beacon [LATE]"
             else:
                 # Alive - normal colors
                 if child_is_session:
