@@ -191,48 +191,150 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
-	// Create main content (left side)
-	mainContent := m.renderMainContent()
+	// Build header (title + status) - this is FIXED at top, not scrollable
+	var headerLines []string
+	title := titleStyle.Render("🎯 Sliver C2 Network Topology")
+	headerLines = append(headerLines, title)
 	
-	// Create tactical panel (right side)
+	statusText := fmt.Sprintf("Last Update: %s", m.lastUpdate.Format("15:04:05"))
+	if m.ready && len(m.agents) > 0 {
+		scrollPercent := int(m.viewport.ScrollPercent() * 100)
+		statusText += fmt.Sprintf("  │  Scroll: %d%%", scrollPercent)
+	}
+	if m.termWidth > 0 && m.termHeight > 0 {
+		statusText += fmt.Sprintf("  │  Term: %dx%d", m.termWidth, m.termHeight)
+	}
+	headerLines = append(headerLines, statusStyle.Render(statusText))
+	headerLines = append(headerLines, "")
+	
+	// Build scrollable content area (agents)
+	var contentLines []string
+	if len(m.agents) == 0 {
+		contentLines = append(contentLines, "  No agents connected")
+		contentLines = append(contentLines, "")
+	} else if m.ready {
+		// Use viewport for scrolling
+		contentLines = append(contentLines, m.viewport.View())
+	} else {
+		// Initial render before viewport ready
+		agentLines := m.renderAgents()
+		logo := []string{
+			"   🎯 C2    ",
+			"  ▄████▄   ",
+			"  ████████  ",
+			"  ▀██████▀  ",
+			"    ▀██▀    ",
+		}
+		logoStart := len(agentLines)/2 - len(logo)/2
+		if logoStart < 0 {
+			logoStart = 0
+		}
+		for i, agentLine := range agentLines {
+			var logoLine string
+			if i >= logoStart && i < logoStart+len(logo) {
+				logoLine = logoStyle.Render(logo[i-logoStart])
+			} else {
+				logoLine = strings.Repeat(" ", 12)
+			}
+			contentLines = append(contentLines, "  "+logoLine+"    "+agentLine)
+		}
+	}
+	
+	// Build footer (stats + help)
+	var footerLines []string
+	footerLines = append(footerLines, "")
+	footerLines = append(footerLines, separatorStyle.Render(strings.Repeat("─", 90)))
+	footerLines = append(footerLines, "")
+	
+	statsLine := fmt.Sprintf("🟢 Sessions: %d  │  🟡 Beacons: %d  │  🔵 Total: %d",
+		m.stats.Sessions, m.stats.Beacons, m.stats.Compromised)
+	footerLines = append(footerLines, statsStyle.Render(statsLine))
+	
+	trackerMutex.RLock()
+	lostCount := len(lostAgents)
+	trackerMutex.RUnlock()
+	
+	if lostCount > 0 {
+		lostLine := fmt.Sprintf("⚠️  Recently Lost: %d (displayed for %d min)",
+			lostCount, int(lostAgentTimeout.Minutes()))
+		footerLines = append(footerLines, lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#ff9900")).
+			Italic(true).
+			Render(lostLine))
+	}
+	
+	footerLines = append(footerLines, "")
+	helpText := "  Press 'r' to refresh  │  '↑↓' or 'j/k' to scroll  │  'q' to quit"
+	footerLines = append(footerLines, helpStyle.Render(helpText))
+	footerLines = append(footerLines, "")
+	
+	// Combine header + content + footer for left side
+	leftContent := strings.Join(append(append(headerLines, contentLines...), footerLines...), "\n")
+	
+	// Add tactical panel if we have agents - position it as an absolute overlay
 	tacticalPanel := m.renderTacticalPanel()
-	
-	// If we have agents and a panel, show it alongside main content
 	if len(m.agents) > 0 && tacticalPanel != "" && m.termWidth > 100 {
-		// Split both into lines
-		mainLines := strings.Split(mainContent, "\n")
+		// DEBUG: Write view composition details
+		if os.Getenv("DEBUG_VIEW") == "1" {
+			debugInfo := fmt.Sprintf("=== VIEW DEBUG ===\n"+
+				"Header lines: %d\n"+
+				"Content lines: %d\n"+
+				"Footer lines: %d\n"+
+				"Left total: %d\n"+
+				"Panel lines: %d\n"+
+				"Term: %dx%d\n"+
+				"Panel X pos: %d\n",
+				len(headerLines),
+				len(contentLines),
+				len(footerLines),
+				len(strings.Split(leftContent, "\n")),
+				len(strings.Split(tacticalPanel, "\n")),
+				m.termWidth, m.termHeight,
+				m.termWidth-42)
+			os.WriteFile("/tmp/view_debug.txt", []byte(debugInfo), 0644)
+		}
+		
+		// Calculate panel position (right edge minus panel width)
+		// Panel is Width(35) + Padding(1,2) + Border = 37 chars total
+		panelWidth := 37
+		panelX := m.termWidth - panelWidth
+		if panelX < 100 {
+			panelX = 100
+		}
+		
+		// Split content into lines
+		leftLines := strings.Split(leftContent, "\n")
 		panelLines := strings.Split(tacticalPanel, "\n")
 		
-		// Calculate spacing - put panel at far right edge
-		panelStartPos := m.termWidth - 42 // 42 chars from right edge (panel width + margin)
-		if panelStartPos < 100 {
-			panelStartPos = 100 // Minimum position
+		// Ensure we have enough lines for the full panel
+		totalLines := len(leftLines)
+		if len(panelLines) > totalLines {
+			totalLines = len(panelLines)
 		}
 		
-		// Pad each main line to reach panel start position, then append panel line
-		maxLines := len(mainLines)
-		if len(panelLines) > maxLines {
-			maxLines = len(panelLines)
-		}
-		
+		// Build output by overlaying panel on right side at fixed position
 		var result []string
-		for i := 0; i < maxLines; i++ {
+		for i := 0; i < totalLines; i++ {
 			var line string
 			
-			// Get main content line
-			if i < len(mainLines) {
-				line = mainLines[i]
+			// Add left content line (if exists)
+			if i < len(leftLines) {
+				line = leftLines[i]
 			}
 			
-			// Calculate actual width without ANSI codes
-			lineWidth := lipgloss.Width(line)
+			// Calculate visual width (handles ANSI codes correctly)
+			currentWidth := lipgloss.Width(line)
 			
-			// Pad to panel start position
-			if lineWidth < panelStartPos {
-				line += strings.Repeat(" ", panelStartPos-lineWidth)
+			// Pad to panel position only if line is shorter
+			if currentWidth < panelX {
+				line += strings.Repeat(" ", panelX-currentWidth)
+			} else if currentWidth > panelX {
+				// Line is too long - need to truncate it properly
+				// Use lipgloss.Truncate to preserve ANSI codes
+				line = lipgloss.NewStyle().Width(panelX).Render(line)
 			}
 			
-			// Add panel line if exists
+			// Overlay panel line at fixed position (panel always starts from top)
 			if i < len(panelLines) {
 				line += panelLines[i]
 			}
@@ -243,95 +345,7 @@ func (m model) View() string {
 		return strings.Join(result, "\n")
 	}
 	
-	// Fallback: just return main content
-	return mainContent
-}
-
-func (m model) renderMainContent() string {
-	var lines []string
-
-	// Title
-	title := titleStyle.Render("🎯 Sliver C2 Network Topology")
-	lines = append(lines, title)
-
-	// Status with scroll indicator
-	statusText := fmt.Sprintf("Last Update: %s",
-		m.lastUpdate.Format("15:04:05"))
-	
-	// Add scroll position indicator if viewport is active
-	if m.ready && len(m.agents) > 0 {
-		scrollPercent := int(m.viewport.ScrollPercent() * 100)
-		statusText += fmt.Sprintf("  │  Scroll: %d%%", scrollPercent)
-	}
-	lines = append(lines, statusStyle.Render(statusText))
-
-	lines = append(lines, "")
-
-	// Show agents
-	if len(m.agents) == 0 {
-		lines = append(lines, "  No agents connected")
-		lines = append(lines, "")
-	} else if m.ready {
-		// Use viewport for scrolling if initialized
-		lines = append(lines, m.viewport.View())
-	} else {
-		// Show agents without viewport until it's ready
-		agentLines := m.renderAgents()
-		logo := []string{
-			"   🎯 C2    ",
-			"  ▄████▄   ",
-			"  ████████  ",
-			"  ▀██████▀  ",
-			"    ▀██▀    ",
-		}
-		
-		logoStart := len(agentLines)/2 - len(logo)/2
-		if logoStart < 0 {
-			logoStart = 0
-		}
-
-		for i, agentLine := range agentLines {
-			var logoLine string
-			if i >= logoStart && i < logoStart+len(logo) {
-				logoLine = logoStyle.Render(logo[i-logoStart])
-			} else {
-				logoLine = strings.Repeat(" ", 12)
-			}
-			lines = append(lines, "  "+logoLine+"    "+agentLine)
-		}
-	}
-
-	// Stats footer with better separator
-	lines = append(lines, "")
-	lines = append(lines, separatorStyle.Render(strings.Repeat("─", 90)))
-	lines = append(lines, "")
-	
-	statsLine := fmt.Sprintf("🟢 Sessions: %d  │  🟡 Beacons: %d  │  🔵 Total: %d",
-		m.stats.Sessions, m.stats.Beacons, m.stats.Compromised)
-	lines = append(lines, statsStyle.Render(statsLine))
-
-	// Show lost agents if any
-	trackerMutex.RLock()
-	lostCount := len(lostAgents)
-	trackerMutex.RUnlock()
-	
-	if lostCount > 0 {
-		lostLine := fmt.Sprintf("⚠️  Recently Lost: %d (displayed for %d min)",
-			lostCount, int(lostAgentTimeout.Minutes()))
-		lines = append(lines, lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#ff9900")).
-			Italic(true).
-			Render(lostLine))
-	}
-
-	lines = append(lines, "")
-	
-	// Enhanced help text with scroll controls
-	helpText := "  Press 'r' to refresh  │  '↑↓' or 'j/k' to scroll  │  'q' to quit"
-	lines = append(lines, helpStyle.Render(helpText))
-	lines = append(lines, "")
-
-	return strings.Join(lines, "\n")
+	return leftContent
 }
 
 func (m model) renderTacticalPanel() string {
@@ -352,8 +366,8 @@ func (m model) renderTacticalPanel() string {
 
 	sectionStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#f1fa8c")).
-		Bold(true).
-		MarginTop(1)
+		Bold(true)
+		// Removed MarginTop(1) - we'll add empty lines manually instead
 
 	valueStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#50fa7b"))
@@ -364,7 +378,13 @@ func (m model) renderTacticalPanel() string {
 	var lines []string
 
 	// Header
-	lines = append(lines, headerStyle.Render("📊 TACTICAL INTELLIGENCE"))
+	headerText := "📊 TACTICAL INTELLIGENCE"
+	// Add panel height indicator for debugging
+	if m.termHeight > 0 {
+		// Calculate approx panel lines (will be rendered with border/padding)
+		headerText += fmt.Sprintf(" (H:%d)", m.termHeight)
+	}
+	lines = append(lines, headerStyle.Render(headerText))
 	lines = append(lines, "")
 
 	// Analyze data
@@ -505,7 +525,18 @@ func (m model) renderTacticalPanel() string {
 				Render(fmt.Sprintf("✨ %d", newCount))))
 	}
 
-	return panelStyle.Render(strings.Join(lines, "\n"))
+	rendered := panelStyle.Render(strings.Join(lines, "\n"))
+	
+	// DEBUG: Write panel content to file for inspection
+	if os.Getenv("DEBUG_PANEL") == "1" {
+		panelDebug := fmt.Sprintf("=== PANEL DEBUG (Lines: %d) ===\n%s\n=== RAW LINES ===\n%s\n",
+			len(strings.Split(rendered, "\n")),
+			rendered,
+			strings.Join(lines, "\n"))
+		os.WriteFile("/tmp/tactical_panel_debug.txt", []byte(panelDebug), 0644)
+	}
+	
+	return rendered
 }
 
 // updateViewportContent updates the viewport with the current agent list
