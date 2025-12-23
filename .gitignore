@@ -4,6 +4,8 @@ __pycache__/
 *$py.class
 *.so
 .Python
+python/.venv/
+python/venv/
 .venv/
 venv/
 ENV/
@@ -17,7 +19,9 @@ env/
 *.dylib
 *.test
 *.out
-sliver-graph-go
+go/sliver-graph
+go/sliver-graph-go
+go/sliver-graphs
 go.work
 
 # IDE
@@ -34,3 +38,4 @@ Thumbs.db
 # Project specific
 test_live.sh
 sliver-graph-legacy-backup.py
+sliver-graph-legacy.py
