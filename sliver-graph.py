@@ -633,17 +633,17 @@ def draw_graph(agent_tree, total_sessions, total_beacons, last_update=None, chan
     stats_line += f"🟢 Standard: {Colors.BOLD}{Colors.GREEN}{stats['unprivileged']}{Colors.ENDC}  "
     
     # OS breakdown
-    stats_line += f"💻 OS: "
+    # OS breakdown
+    os_parts = []
     if stats['windows'] > 0:
-        stats_line += f"{Colors.BOLD}{stats['windows']}{Colors.ENDC}W"
+        os_parts.append(f"Windows({Colors.BOLD}{stats['windows']}{Colors.ENDC})")
     if stats['linux'] > 0:
-        if stats['windows'] > 0:
-            stats_line += " "
-        stats_line += f"{Colors.BOLD}{stats['linux']}{Colors.ENDC}L"
+        os_parts.append(f"Linux({Colors.BOLD}{stats['linux']}{Colors.ENDC})")
     if stats['other_os'] > 0:
-        if stats['windows'] > 0 or stats['linux'] > 0:
-            stats_line += " "
-        stats_line += f"{Colors.BOLD}{stats['other_os']}{Colors.ENDC}O"
+        os_parts.append(f"Other({Colors.BOLD}{stats['other_os']}{Colors.ENDC})")
+    
+    if os_parts:
+        stats_line += f"💻 OS: " + " ".join(os_parts) + "  "
     
     stats_line += f"  🔗 Protocols: "
     
