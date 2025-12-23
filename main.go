@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -16,43 +17,22 @@ var (
 	titleStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("#00d7ff")).
-			Border(lipgloss.DoubleBorder()).
+			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("#00d7ff")).
 			Padding(0, 1)
 
-	agentBoxStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#874BFD")).
-			Padding(0, 1).
-			MarginTop(1)
-
-	sessionStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#00ff00")).
+	logoStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#d75fff")).
 			Bold(true)
 
-	beaconStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#ffff00")).
-			Bold(true)
-
-	privilegedStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#ff0000")).
-			Bold(true)
-
-	ipStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#00d7ff"))
-
-	statsStyle = lipgloss.NewStyle().
-			Border(lipgloss.NormalBorder()).
-			BorderForeground(lipgloss.Color("#874BFD")).
-			Padding(0, 2).
-			MarginTop(1)
+	statusStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#00d7ff"))
 
 	helpStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#626262")).
-			MarginTop(1)
+			Foreground(lipgloss.Color("#626262"))
 )
 
-// Agent represents a Sliver agent (session or beacon)
+// Agent represents a Sliver agent
 type Agent struct {
 	ID            string
 	Hostname      string
@@ -66,30 +46,24 @@ type Agent struct {
 	Children      []Agent
 }
 
-// Stats holds statistics about all agents
+// Stats holds statistics
 type Stats struct {
-	TotalSessions int
-	TotalBeacons  int
-	UniqueHosts   int
-	Privileged    int
-	Standard      int
-	Windows       int
-	Linux         int
-	NewAgents     int
+	Sessions    int
+	Beacons     int
+	Hosts       int
+	Compromised int
 }
 
-// Model represents the Bubble Tea application state
+// Model represents the application state
 type model struct {
-	agents       []Agent
-	stats        Stats
-	spinner      spinner.Model
-	loading      bool
-	err          error
-	lastUpdate   time.Time
-	refreshTimer *time.Timer
+	agents     []Agent
+	stats      Stats
+	spinner    spinner.Model
+	loading    bool
+	err        error
+	lastUpdate time.Time
 }
 
-// Init initializes the model
 func (m model) Init() tea.Cmd {
 	return tea.Batch(
 		m.spinner.Tick,
@@ -97,7 +71,6 @@ func (m model) Init() tea.Cmd {
 	)
 }
 
-// Update handles messages and updates the model
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -105,7 +78,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		case "r":
-			// Manual refresh
 			m.loading = true
 			return m, fetchAgentsCmd
 		}
@@ -121,7 +93,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		m.lastUpdate = time.Now()
 		m.err = nil
-		// Schedule next auto-refresh in 5 seconds
 		return m, tea.Tick(5*time.Second, func(t time.Time) tea.Msg {
 			return refreshMsg{}
 		})
@@ -139,139 +110,134 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// View renders the UI
 func (m model) View() string {
 	if m.err != nil {
 		return fmt.Sprintf("Error: %v\n\nPress 'q' to quit, 'r' to retry", m.err)
 	}
 
-	var s string
+	var lines []string
 
 	// Title
 	title := titleStyle.Render("🎯 SLIVER C2 - NETWORK TOPOLOGY VISUALIZATION")
-	s += title + "\n\n"
+	lines = append(lines, title)
+	lines = append(lines, "")
 
-	// Status bar
-	statusText := fmt.Sprintf("⏰ Last Update: %s", m.lastUpdate.Format("15:04:05"))
-	if m.loading {
-		statusText += fmt.Sprintf("  %s Refreshing...", m.spinner.View())
-	}
-	s += lipgloss.NewStyle().Foreground(lipgloss.Color("#626262")).Render(statusText) + "\n"
+	// Status
+	statusText := fmt.Sprintf("⏰ Last Update: %s  |  Press Ctrl+C to exit",
+		m.lastUpdate.Format("2006-01-02 15:04:05"))
+	lines = append(lines, statusStyle.Render(statusText))
+	lines = append(lines, "")
 
-	// Stats summary
-	if m.stats.TotalSessions > 0 || m.stats.TotalBeacons > 0 {
-		statsText := fmt.Sprintf(
-			"🟢 Sessions: %d  🟡 Beacons: %d  🔵 Hosts: %d  🔴 Privileged: %d  🟢 Standard: %d",
-			m.stats.TotalSessions,
-			m.stats.TotalBeacons,
-			m.stats.UniqueHosts,
-			m.stats.Privileged,
-			m.stats.Standard,
-		)
-		
-		if m.stats.Windows > 0 {
-			statsText += fmt.Sprintf("  💻 OS: Windows(%d)", m.stats.Windows)
-		}
-		if m.stats.Linux > 0 {
-			statsText += fmt.Sprintf(" Linux(%d)", m.stats.Linux)
-		}
-
-		s += statsStyle.Render(statsText) + "\n"
+	// Logo
+	logo := []string{
+		"   🎯 C2    ",
+		"  ▄████▄   ",
+		"  ████████  ",
+		"  ▀██████▀  ",
+		"    ▀██▀    ",
 	}
 
-	// Agents list
+	// Agents with logo on left
 	if len(m.agents) == 0 {
-		s += "\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("#626262")).Render("No agents connected") + "\n"
+		lines = append(lines, "No agents connected")
 	} else {
-		for _, agent := range m.agents {
-			s += m.renderAgent(agent, 0) + "\n"
+		agentLines := m.renderAgents()
+		logoStart := len(agentLines)/2 - len(logo)/2
+		if logoStart < 0 {
+			logoStart = 0
+		}
+
+		for i, agentLine := range agentLines {
+			var logoLine string
+			if i >= logoStart && i < logoStart+len(logo) {
+				logoLine = logoStyle.Render(logo[i-logoStart])
+			} else {
+				logoLine = strings.Repeat(" ", 12)
+			}
+			lines = append(lines, logoLine+"      "+agentLine)
 		}
 	}
 
-	// Help text
-	help := helpStyle.Render("Press 'r' to refresh, 'q' to quit")
-	s += "\n" + help
+	// Stats footer
+	lines = append(lines, "")
+	lines = append(lines, strings.Repeat("─", 80))
+	
+	statsLine := fmt.Sprintf("🟢 Active Sessions: %d  🟡 Active Beacons: %d  🔵 Total Compromised: %d",
+		m.stats.Sessions, m.stats.Beacons, m.stats.Compromised)
+	lines = append(lines, statsLine)
 
-	return s
+	return strings.Join(lines, "\n")
 }
 
-// renderAgent renders a single agent with proper styling
-func (m model) renderAgent(agent Agent, indent int) string {
-	var content string
+func (m model) renderAgents() []string {
+	var lines []string
 
-	// Determine icon and style based on agent type
-	var statusIcon, typeLabel string
-	var userStyle lipgloss.Style
+	for _, agent := range m.agents {
+		lines = append(lines, m.renderAgentLine(agent))
+	}
 
-	if agent.IsDead {
-		statusIcon = "💀"
-		typeLabel = "[DEAD]"
-		userStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#626262"))
-	} else if agent.IsSession {
+	return lines
+}
+
+func (m model) renderAgentLine(agent Agent) string {
+	// Status icon
+	var statusIcon string
+	var statusColor lipgloss.Color
+	
+	if agent.IsSession {
 		statusIcon = "◆"
-		typeLabel = "session"
-		userStyle = sessionStyle
+		statusColor = lipgloss.Color("#00ff00") // Green
 	} else {
-		statusIcon = "◇"
-		typeLabel = "beacon"
-		userStyle = beaconStyle
+		statusIcon = "◇"  
+		statusColor = lipgloss.Color("#ffff00") // Yellow
 	}
 
 	// OS icon
 	osIcon := "💻"
-	if agent.OS == "windows" {
+	if strings.Contains(strings.ToLower(agent.OS), "windows") {
 		if agent.IsSession {
 			osIcon = "🖥️"
 		} else {
 			osIcon = "💻"
 		}
-	} else if agent.OS == "linux" {
+	} else if strings.Contains(strings.ToLower(agent.OS), "linux") {
 		osIcon = "🐧"
 	}
+
+	// Username color
+	var usernameColor lipgloss.Color
+	if agent.IsPrivileged {
+		usernameColor = lipgloss.Color("#ff0000") // Red
+	} else {
+		usernameColor = lipgloss.Color("#00d7ff") // Cyan
+	}
+
+	// Protocol color
+	protocolColor := lipgloss.Color("#00d7ff") // Cyan for MTLS
 
 	// Privilege badge
 	privBadge := ""
 	if agent.IsPrivileged {
-		privBadge = " " + privilegedStyle.Render("💎")
+		privBadge = " 💎"
 	}
 
-	// Build connector
-	connector := "╰────────"
-	if indent > 0 {
-		connector = "    ├───"
-	}
-
-	// Line 1: Username@Hostname
-	line1 := fmt.Sprintf("%s[ %s ]── %s %s %s%s",
-		connector,
-		agent.Transport,
-		statusIcon,
+	// Build the line
+	line := fmt.Sprintf("——[ %s ]——▶ %s %s  %s%s  %s (%s)",
+		lipgloss.NewStyle().Foreground(protocolColor).Render(agent.Transport),
+		lipgloss.NewStyle().Foreground(statusColor).Render(statusIcon),
 		osIcon,
-		userStyle.Render(fmt.Sprintf("%s@%s", agent.Username, agent.Hostname)),
+		lipgloss.NewStyle().Foreground(usernameColor).Bold(true).Render(fmt.Sprintf("%s@%s", agent.Username, agent.Hostname)),
 		privBadge,
-	)
-
-	// Line 2: ID
-	line2 := fmt.Sprintf("            └─ ID: %s (%s)",
 		lipgloss.NewStyle().Foreground(lipgloss.Color("#626262")).Render(agent.ID[:8]),
-		typeLabel,
+		lipgloss.NewStyle().Foreground(statusColor).Render(func() string {
+			if agent.IsSession {
+				return "session"
+			}
+			return "beacon"
+		}()),
 	)
 
-	// Line 3: IP
-	line3 := fmt.Sprintf("            └─ IP: %s",
-		ipStyle.Render(agent.RemoteAddress),
-	)
-
-	content = line1 + "\n" + line2 + "\n" + line3
-
-	// Render children
-	if len(agent.Children) > 0 {
-		for _, child := range agent.Children {
-			content += "\n" + m.renderAgent(child, indent+1)
-		}
-	}
-
-	return content
+	return line
 }
 
 // Messages
@@ -289,14 +255,13 @@ type errMsg struct {
 // Commands
 func fetchAgentsCmd() tea.Msg {
 	// TODO: Connect to Sliver and fetch real data
-	// For now, return mock data
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	// Simulate network delay
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(300 * time.Millisecond)
 
-	// Mock data for testing
+	// Mock data
 	agents := []Agent{
 		{
 			ID:            "22bf4a82-abc123",
@@ -307,7 +272,6 @@ func fetchAgentsCmd() tea.Msg {
 			RemoteAddress: "10.10.110.10:50199",
 			IsSession:     true,
 			IsPrivileged:  false,
-			IsDead:        false,
 		},
 		{
 			ID:            "4370d26a-def456",
@@ -318,7 +282,6 @@ func fetchAgentsCmd() tea.Msg {
 			RemoteAddress: "10.10.110.250:63805",
 			IsSession:     false,
 			IsPrivileged:  true,
-			IsDead:        false,
 		},
 		{
 			ID:            "b773f522-ghi789",
@@ -329,7 +292,6 @@ func fetchAgentsCmd() tea.Msg {
 			RemoteAddress: "10.10.110.250:21392",
 			IsSession:     false,
 			IsPrivileged:  true,
-			IsDead:        false,
 		},
 		{
 			ID:            "263f4501-jkl012",
@@ -340,22 +302,17 @@ func fetchAgentsCmd() tea.Msg {
 			RemoteAddress: "10.10.110.10:49908",
 			IsSession:     false,
 			IsPrivileged:  false,
-			IsDead:        false,
 		},
 	}
 
 	stats := Stats{
-		TotalSessions: 1,
-		TotalBeacons:  3,
-		UniqueHosts:   3,
-		Privileged:    2,
-		Standard:      2,
-		Windows:       4,
-		Linux:         0,
-		NewAgents:     0,
+		Sessions:    1,
+		Beacons:     3,
+		Hosts:       3,
+		Compromised: 4,
 	}
 
-	_ = ctx // Use context (will be used when implementing real Sliver connection)
+	_ = ctx
 
 	return agentsMsg{
 		agents: agents,
@@ -376,10 +333,9 @@ func main() {
 		loading: true,
 	}
 
-	// Create program
+	// Create and run program
 	p := tea.NewProgram(m, tea.WithAltScreen())
 
-	// Run
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
