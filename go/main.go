@@ -291,7 +291,7 @@ func (m model) View() string {
 				len(strings.Split(leftContent, "\n")),
 				len(strings.Split(tacticalPanel, "\n")),
 				m.termWidth, m.termHeight,
-				m.termWidth-42)
+				m.termWidth-37)
 			os.WriteFile("/tmp/view_debug.txt", []byte(debugInfo), 0644)
 		}
 		
@@ -306,6 +306,9 @@ func (m model) View() string {
 		// Split content into lines
 		leftLines := strings.Split(leftContent, "\n")
 		panelLines := strings.Split(tacticalPanel, "\n")
+		
+		// Calculate how many header lines we have (these should not be truncated)
+		headerLineCount := len(headerLines)
 		
 		// Ensure we have enough lines for the full panel
 		totalLines := len(leftLines)
@@ -326,18 +329,31 @@ func (m model) View() string {
 			// Calculate visual width (handles ANSI codes correctly)
 			currentWidth := lipgloss.Width(line)
 			
-			// Pad to panel position only if line is shorter
-			if currentWidth < panelX {
-				line += strings.Repeat(" ", panelX-currentWidth)
-			} else if currentWidth > panelX {
-				// Line is too long - need to truncate it properly
-				// Use lipgloss.Truncate to preserve ANSI codes
-				line = lipgloss.NewStyle().Width(panelX).Render(line)
-			}
-			
-			// Overlay panel line at fixed position (panel always starts from top)
-			if i < len(panelLines) {
-				line += panelLines[i]
+			// For header lines (title, status), don't truncate - let them extend fully
+			// Only truncate content/footer lines that might overlap with panel
+			if i < headerLineCount {
+				// Header line - just keep as is, don't pad or truncate
+				// Panel won't be overlaid on these lines
+			} else {
+				// Content/footer line - pad or truncate to fit
+				if currentWidth < panelX {
+					line += strings.Repeat(" ", panelX-currentWidth)
+				} else if currentWidth > panelX {
+					// Line is too long - truncate it to make room for panel
+					// Use lipgloss MaxWidth to preserve ANSI codes
+					line = lipgloss.NewStyle().MaxWidth(panelX).Render(line)
+					// Ensure we're exactly at panelX width
+					currentWidth = lipgloss.Width(line)
+					if currentWidth < panelX {
+						line += strings.Repeat(" ", panelX-currentWidth)
+					}
+				}
+				
+				// Overlay panel line (adjusted for header offset)
+				panelLineIndex := i - headerLineCount
+				if panelLineIndex >= 0 && panelLineIndex < len(panelLines) {
+					line += panelLines[panelLineIndex]
+				}
 			}
 			
 			result = append(result, line)
