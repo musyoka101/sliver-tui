@@ -211,6 +211,7 @@ type model struct {
 	activityTracker *ActivityTracker // Activity tracking over time
 	expandedSubnets map[string]bool  // Track which subnets are expanded
 	subnetOrder     []string         // Track subnet display order for numbered shortcuts
+	numberBuffer    string           // Buffer for multi-digit subnet number input
 }
 
 func (m model) Init() tea.Cmd {
@@ -307,20 +308,49 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		
-		// Toggle individual subnet by number (1-9)
-		case "1", "2", "3", "4", "5", "6", "7", "8", "9":
+		// Multi-digit subnet number input (accumulate digits in buffer)
+		case "0", "1", "2", "3", "4", "5", "6", "7", "8", "9":
 			if m.viewIndex == 2 { // Dashboard view only
-				subnetNum := int(msg.String()[0] - '0') - 1 // Convert '1' to 0, '2' to 1, etc.
+				// Append digit to buffer
+				m.numberBuffer += msg.String()
+				// Update viewport to show the buffer indicator
+				if m.ready {
+					m.updateViewportContent()
+				}
+			}
+			return m, nil
+		
+		// Enter key - activate subnet selection from buffer
+		case "enter":
+			if m.viewIndex == 2 && len(m.numberBuffer) > 0 {
+				// Convert buffer to integer
+				subnetNum := 0
+				for _, ch := range m.numberBuffer {
+					subnetNum = subnetNum*10 + int(ch-'0')
+				}
+				subnetNum-- // Convert 1-based to 0-based index
+				
+				// Toggle subnet if valid
 				if subnetNum >= 0 && subnetNum < len(m.subnetOrder) {
 					subnet := m.subnetOrder[subnetNum]
-					// Toggle this specific subnet
 					m.expandedSubnets[subnet] = !m.expandedSubnets[subnet]
-					
-					// Update viewport
-					if m.ready {
-						m.updateViewportContent()
-					}
 				}
+				
+				// Clear buffer
+				m.numberBuffer = ""
+				
+				// Update viewport
+				if m.ready {
+					m.updateViewportContent()
+				}
+			}
+			return m, nil
+		
+		// Escape key - clear number buffer
+		case "esc":
+			m.numberBuffer = ""
+			if m.ready {
+				m.updateViewportContent()
 			}
 			return m, nil
 		
@@ -525,8 +555,18 @@ func (m model) View() string {
 	}
 	
 	footerLines = append(footerLines, "")
+	
+	// Show number buffer indicator if user is typing a subnet number
+	if len(m.numberBuffer) > 0 {
+		bufferStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#f1fa8c")). // Yellow
+			Bold(true)
+		bufferText := fmt.Sprintf("  > Subnet #%s_ (press Enter to toggle, Esc to cancel)", m.numberBuffer)
+		footerLines = append(footerLines, bufferStyle.Render(bufferText))
+	}
+	
 	helpStyle := lipgloss.NewStyle().Foreground(m.theme.HelpColor)
-	helpText := "  Press 'r' to refresh  │  't' to change theme  │  'v' to change view  │  'd' for dashboard  │  '1-9' subnet expand  │  'e' expand all  │  '↑↓' or 'j/k' to scroll  │  'q' to quit"
+	helpText := "  Press 'r' to refresh  │  't' to change theme  │  'v' to change view  │  'd' for dashboard  │  Type subnet # + Enter to expand  │  'e' expand all  │  '↑↓' or 'j/k' to scroll  │  'q' to quit"
 	footerLines = append(footerLines, helpStyle.Render(helpText))
 	footerLines = append(footerLines, "")
 	
@@ -1080,7 +1120,7 @@ func (m model) renderNetworkTopologyPanel() string {
 	
 	var lines []string
 	lines = append(lines, titleStyle.Render("🌍 NETWORK TOPOLOGY"))
-	lines = append(lines, mutedStyle.Render("(press number or 'e' to expand)"))
+	lines = append(lines, mutedStyle.Render("(type subnet # + Enter to expand)"))
 	lines = append(lines, "")
 	
 	// Group agents by subnet (first 3 octets) with deduplication by hostname
@@ -1135,11 +1175,15 @@ func (m model) renderNetworkTopologyPanel() string {
 			valueStyle.Render(fmt.Sprintf("%d subnet(s)", totalSubnets))))
 		lines = append(lines, "")
 		
-		// Show each subnet (limit to top 2 for space)
+		// Show each subnet (limit to 5 for space, but can handle unlimited via multi-digit input)
 		count := 0
+		maxVisible := 5
 		for subnetIdx, subnet := range m.subnetOrder {
-			if count >= 2 {
-				lines = append(lines, mutedStyle.Render(fmt.Sprintf("... and %d more subnet(s)", totalSubnets-2)))
+			if count >= maxVisible {
+				remaining := totalSubnets - maxVisible
+				if remaining > 0 {
+					lines = append(lines, mutedStyle.Render(fmt.Sprintf("... and %d more (type number to expand)", remaining)))
+				}
 				break
 			}
 			
