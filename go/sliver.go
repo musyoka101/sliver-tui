@@ -204,6 +204,17 @@ func ConvertToAgents(sessions []*clientpb.Session, beacons []*clientpb.Beacon) (
 
 	// Convert beacons
 	for _, b := range beacons {
+		// Calculate if beacon is dead based on last check-in time
+		// A beacon is considered dead if it hasn't checked in for 3x its interval
+		isDead := b.IsDead
+		if !isDead && b.LastCheckin > 0 && b.Interval > 0 {
+			lastCheckin := time.Unix(b.LastCheckin, 0)
+			deadThreshold := time.Duration(b.Interval*3) * time.Second
+			if time.Since(lastCheckin) > deadThreshold {
+				isDead = true
+			}
+		}
+		
 		agent := Agent{
 			ID:            b.ID,
 			Hostname:      b.Hostname,
@@ -213,7 +224,7 @@ func ConvertToAgents(sessions []*clientpb.Session, beacons []*clientpb.Beacon) (
 			RemoteAddress: b.RemoteAddress,
 			IsSession:     false,
 			IsPrivileged:  isPrivileged(b.Username, b.OS),
-			IsDead:        b.IsDead,
+			IsDead:        isDead,
 			ProxyURL:      b.ProxyURL,
 		}
 		agents = append(agents, agent)
