@@ -173,6 +173,7 @@ type model struct {
 	viewIndex       int  // Current view index
 	view            View // Current view
 	activityTracker *ActivityTracker // Activity tracking over time
+	expandedSubnets map[string]bool  // Track which subnets are expanded
 }
 
 func (m model) Init() tea.Cmd {
@@ -226,6 +227,49 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		
+		// Expand/collapse subnets in network topology (dashboard view only)
+		case "e":
+			if m.viewIndex == 2 { // Dashboard view
+				// Toggle all subnets
+				allExpanded := true
+				for subnet := range m.expandedSubnets {
+					if !m.expandedSubnets[subnet] {
+						allExpanded = false
+						break
+					}
+				}
+				
+				// If all expanded, collapse all; otherwise expand all
+				for subnet := range m.expandedSubnets {
+					m.expandedSubnets[subnet] = !allExpanded
+				}
+				
+				// For new subnets, expand them
+				if !allExpanded {
+					// Get all current subnets
+					for _, agent := range m.agents {
+						if agent.IsDead {
+							continue
+						}
+						ip := agent.RemoteAddress
+						if idx := strings.Index(ip, ":"); idx != -1 {
+							ip = ip[:idx]
+						}
+						octets := strings.Split(ip, ".")
+						if len(octets) >= 3 {
+							subnet := fmt.Sprintf("%s.%s.%s.0/24", octets[0], octets[1], octets[2])
+							m.expandedSubnets[subnet] = true
+						}
+					}
+				}
+				
+				// Update viewport
+				if m.ready {
+					m.updateViewportContent()
+				}
+			}
+			return m, nil
+		
 		// Viewport scrolling controls
 		case "up", "k":
 			m.viewport, cmd = m.viewport.Update(msg)
@@ -243,6 +287,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.GotoTop()
 		case "end", "G":
 			m.viewport.GotoBottom()
+		}
+
+	case tea.MouseMsg:
+		// Handle mouse clicks for interactive elements
+		if msg.Type == tea.MouseLeft {
+			// Check if in dashboard view
+			if m.viewIndex == 2 {
+				// TODO: Implement click detection for subnet expansion
+				// For now, we'll add a simple toggle mechanism with 'e' key
+			}
 		}
 
 	case tea.WindowSizeMsg:
@@ -415,7 +469,7 @@ func (m model) View() string {
 	
 	footerLines = append(footerLines, "")
 	helpStyle := lipgloss.NewStyle().Foreground(m.theme.HelpColor)
-	helpText := "  Press 'r' to refresh  │  't' to change theme  │  'v' to change view  │  'd' for dashboard  │  '↑↓' or 'j/k' to scroll  │  'q' to quit"
+	helpText := "  Press 'r' to refresh  │  't' to change theme  │  'v' to change view  │  'd' for dashboard  │  'e' to expand subnets  │  '↑↓' or 'j/k' to scroll  │  'q' to quit"
 	footerLines = append(footerLines, helpStyle.Render(helpText))
 	footerLines = append(footerLines, "")
 	
@@ -962,12 +1016,18 @@ func (m model) renderNetworkTopologyPanel() string {
 	barStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#00CED1")) // Dark turquoise
 	
+	// Clickable style
+	clickableStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#f1fa8c")). // Yellow
+		Underline(true)
+	
 	var lines []string
 	lines = append(lines, titleStyle.Render("🌍 NETWORK TOPOLOGY"))
+	lines = append(lines, mutedStyle.Render("(click subnet to expand)"))
 	lines = append(lines, "")
 	
-	// Group agents by subnet (first 3 octets)
-	subnetAgents := make(map[string][]Agent)
+	// Group agents by subnet (first 3 octets) with deduplication by hostname
+	subnetHosts := make(map[string]map[string]Agent) // subnet -> hostname -> agent
 	pivotCount := 0
 	
 	for _, agent := range m.agents {
@@ -988,7 +1048,15 @@ func (m model) renderNetworkTopologyPanel() string {
 			subnet = fmt.Sprintf("%s.%s.%s.0/24", octets[0], octets[1], octets[2])
 		}
 		
-		subnetAgents[subnet] = append(subnetAgents[subnet], agent)
+		// Initialize subnet map if not exists
+		if subnetHosts[subnet] == nil {
+			subnetHosts[subnet] = make(map[string]Agent)
+		}
+		
+		// Deduplicate by hostname (keep first occurrence)
+		if _, exists := subnetHosts[subnet][agent.Hostname]; !exists {
+			subnetHosts[subnet][agent.Hostname] = agent
+		}
 		
 		// Count pivots (agents with parent)
 		if agent.ParentID != "" {
@@ -996,7 +1064,7 @@ func (m model) renderNetworkTopologyPanel() string {
 		}
 	}
 	
-	totalSubnets := len(subnetAgents)
+	totalSubnets := len(subnetHosts)
 	
 	if totalSubnets == 0 {
 		lines = append(lines, mutedStyle.Render("No network data available"))
@@ -1009,10 +1077,16 @@ func (m model) renderNetworkTopologyPanel() string {
 		
 		// Show each subnet (limit to top 2 for space)
 		count := 0
-		for subnet, agents := range subnetAgents {
+		for subnet, hosts := range subnetHosts {
 			if count >= 2 {
 				lines = append(lines, mutedStyle.Render(fmt.Sprintf("... and %d more subnet(s)", totalSubnets-2)))
 				break
+			}
+			
+			// Convert map to slice for iteration
+			var agents []Agent
+			for _, agent := range hosts {
+				agents = append(agents, agent)
 			}
 			
 			// Count privileged agents in this subnet
@@ -1036,49 +1110,87 @@ func (m model) renderNetworkTopologyPanel() string {
 				icon = "🏢" // Internal network
 			}
 			
-			lines = append(lines, fmt.Sprintf("%s %s",
+			// Check if subnet is expanded
+			isExpanded := m.expandedSubnets[subnet]
+			expandIcon := "▶"
+			if isExpanded {
+				expandIcon = "▼"
+			}
+			
+			// Show subnet header (clickable)
+			lines = append(lines, fmt.Sprintf("%s %s %s",
+				clickableStyle.Render(expandIcon),
 				icon,
 				labelStyle.Render(subnet)))
 			lines = append(lines, fmt.Sprintf("   %s %s",
 				barStyle.Render(bar),
 				valueStyle.Render(fmt.Sprintf("%d host(s)", len(agents)))))
 			
-			// Show individual hostnames (limit to 3 hosts per subnet)
-			hostCount := 0
-			for _, agent := range agents {
-				if hostCount >= 3 {
-					remaining := len(agents) - 3
-					if remaining > 0 {
-						lines = append(lines, fmt.Sprintf("      %s",
-							mutedStyle.Render(fmt.Sprintf("... +%d more", remaining))))
+			// Show individual hostnames based on expansion state
+			if isExpanded {
+				// Show all hosts when expanded
+				for hostIdx, agent := range agents {
+					// Host icon based on position
+					hostIcon := "├─"
+					if hostIdx == len(agents)-1 {
+						hostIcon = "└─"
 					}
-					break
+					
+					// Privilege indicator
+					privIcon := "👤"
+					if agent.IsPrivileged {
+						privIcon = "💎"
+					}
+					
+					// Truncate hostname if too long
+					hostname := agent.Hostname
+					if len(hostname) > 18 {
+						hostname = hostname[:15] + "..."
+					}
+					
+					lines = append(lines, fmt.Sprintf("      %s %s %s",
+						mutedStyle.Render(hostIcon),
+						privIcon,
+						labelStyle.Render(hostname)))
 				}
-				
-				// Host icon based on privilege
-				hostIcon := "├─"
-				if hostCount == len(agents)-1 || hostCount == 2 {
-					hostIcon = "└─"
+			} else {
+				// Show limited hosts when collapsed (up to 3)
+				hostCount := 0
+				for _, agent := range agents {
+					if hostCount >= 3 {
+						remaining := len(agents) - 3
+						if remaining > 0 {
+							lines = append(lines, fmt.Sprintf("      %s",
+								clickableStyle.Render(fmt.Sprintf("... click to see +%d more", remaining))))
+						}
+						break
+					}
+					
+					// Host icon based on position
+					hostIcon := "├─"
+					if hostCount == len(agents)-1 || hostCount == 2 {
+						hostIcon = "└─"
+					}
+					
+					// Privilege indicator
+					privIcon := "👤"
+					if agent.IsPrivileged {
+						privIcon = "💎"
+					}
+					
+					// Truncate hostname if too long
+					hostname := agent.Hostname
+					if len(hostname) > 18 {
+						hostname = hostname[:15] + "..."
+					}
+					
+					lines = append(lines, fmt.Sprintf("      %s %s %s",
+						mutedStyle.Render(hostIcon),
+						privIcon,
+						labelStyle.Render(hostname)))
+					
+					hostCount++
 				}
-				
-				// Privilege indicator
-				privIcon := "👤"
-				if agent.IsPrivileged {
-					privIcon = "💎"
-				}
-				
-				// Truncate hostname if too long
-				hostname := agent.Hostname
-				if len(hostname) > 18 {
-					hostname = hostname[:15] + "..."
-				}
-				
-				lines = append(lines, fmt.Sprintf("      %s %s %s",
-					mutedStyle.Render(hostIcon),
-					privIcon,
-					labelStyle.Render(hostname)))
-				
-				hostCount++
 			}
 			
 			lines = append(lines, "")
@@ -2106,6 +2218,7 @@ func main() {
 		viewIndex:       0,   // Start with default view
 		view:            defaultView,
 		activityTracker: NewActivityTracker(), // Initialize activity tracker
+		expandedSubnets: make(map[string]bool), // Initialize expanded subnets map
 	}
 
 	// Create and run program with alt screen
