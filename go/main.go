@@ -184,11 +184,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) View() string {
 	// Build header (title + status) - this is FIXED at top, not scrollable
 	var headerLines []string
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(m.theme.TitleColor)
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(m.theme.TitleColor).
+		Background(m.theme.HeaderBg).
+		Padding(0, 1)
 	title := titleStyle.Render("🎯 Sliver C2 Network Topology")
 	headerLines = append(headerLines, title)
 	
-	statusStyle := lipgloss.NewStyle().Foreground(m.theme.StatusColor).Italic(true).MarginBottom(1)
+	statusStyle := lipgloss.NewStyle().
+		Foreground(m.theme.StatusColor).
+		Background(m.theme.HeaderBg).
+		Italic(true).
+		MarginBottom(1).
+		Padding(0, 1)
 	statusText := fmt.Sprintf("Last Update: %s", m.lastUpdate.Format("15:04:05"))
 	if m.ready && len(m.agents) > 0 {
 		scrollPercent := int(m.viewport.ScrollPercent() * 100)
@@ -386,6 +395,7 @@ func (m model) renderTacticalPanel() string {
 	panelStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.theme.TacticalBorder).
+		Background(m.theme.TacticalPanelBg).
 		Padding(1, 2).
 		Width(35)
 
@@ -793,9 +803,19 @@ func (m model) renderAgentLine(agent Agent) []string {
 
 	// Build first line - connector from left with protocol box integrated
 	connectorStyle := lipgloss.NewStyle().Foreground(connectorColor)
-	line1 := fmt.Sprintf("%s[ %s ]%s▶ %s %s  %s%s%s",
+	
+	// Protocol box with background color
+	protocolBoxStyle := lipgloss.NewStyle().
+		Foreground(protocolColor).
+		Background(m.theme.ProtocolBg).
+		Bold(true).
+		Padding(0, 1)
+	
+	protocolBox := protocolBoxStyle.Render(strings.ToUpper(agent.Transport))
+	
+	line1 := fmt.Sprintf("%s%s%s▶ %s %s  %s%s%s",
 		connectorStyle.Render("╰────────"),
-		lipgloss.NewStyle().Foreground(protocolColor).Bold(true).Render(strings.ToUpper(agent.Transport)),
+		protocolBox,
 		connectorStyle.Render("────────"),
 		lipgloss.NewStyle().Foreground(statusColor).Render(statusIcon),
 		osIcon,

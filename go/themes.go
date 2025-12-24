@@ -42,6 +42,16 @@ type Theme struct {
 	StatsColor      lipgloss.Color
 	SeparatorColor  lipgloss.Color
 	HelpColor       lipgloss.Color
+	
+	// Background colors (NEW)
+	SessionBg       lipgloss.Color // Background for session agents
+	BeaconBg        lipgloss.Color // Background for beacon agents
+	DeadBg          lipgloss.Color // Background for dead agents
+	PrivilegedBg    lipgloss.Color // Background highlight for privileged users
+	NewBg           lipgloss.Color // Background highlight for new agents
+	ProtocolBg      lipgloss.Color // Background for protocol boxes
+	TacticalPanelBg lipgloss.Color // Background for tactical panel
+	HeaderBg        lipgloss.Color // Background for header section
 }
 
 // Available themes
@@ -83,6 +93,15 @@ func defaultTheme() Theme {
 		StatsColor:      lipgloss.Color("#00d7ff"),
 		SeparatorColor:  lipgloss.Color("#444444"),
 		HelpColor:       lipgloss.Color("#626262"),
+		// Background colors
+		SessionBg:       lipgloss.Color("#1a3a1a"),    // Dark green tint
+		BeaconBg:        lipgloss.Color("#3a3a1a"),    // Dark yellow tint
+		DeadBg:          lipgloss.Color("#2a2a2a"),    // Darker gray
+		PrivilegedBg:    lipgloss.Color("#3a1a1a"),    // Dark red tint
+		NewBg:           lipgloss.Color("#3a3a00"),    // Dark yellow glow
+		ProtocolBg:      lipgloss.Color("#1a2a3a"),    // Dark blue for protocol boxes
+		TacticalPanelBg: lipgloss.Color("#1a1a2a"),    // Dark purple tint
+		HeaderBg:        lipgloss.Color("#1a1a1a"),    // Subtle header background
 	}
 }
 
@@ -113,6 +132,15 @@ func rainbowTheme() Theme {
 		StatsColor:      lipgloss.Color("#ff00ff"),
 		SeparatorColor:  lipgloss.Color("#ff8800"),
 		HelpColor:       lipgloss.Color("#888888"),
+		// Background colors - vibrant but subtle
+		SessionBg:       lipgloss.Color("#0a2a0a"),
+		BeaconBg:        lipgloss.Color("#2a1a0a"),
+		DeadBg:          lipgloss.Color("#2a0a0a"),
+		PrivilegedBg:    lipgloss.Color("#2a2a00"),
+		NewBg:           lipgloss.Color("#2a2a00"),
+		ProtocolBg:      lipgloss.Color("#1a0a2a"),
+		TacticalPanelBg: lipgloss.Color("#2a002a"),
+		HeaderBg:        lipgloss.Color("#1a001a"),
 	}
 }
 
@@ -143,6 +171,15 @@ func cyberpunkTheme() Theme {
 		StatsColor:      lipgloss.Color("#ff006e"),
 		SeparatorColor:  lipgloss.Color("#ff00ff"),
 		HelpColor:       lipgloss.Color("#8338ec"),
+		// Background colors - cyberpunk neon glow
+		SessionBg:       lipgloss.Color("#0a1a2a"),
+		BeaconBg:        lipgloss.Color("#2a0a1a"),
+		DeadBg:          lipgloss.Color("#1a0a1a"),
+		PrivilegedBg:    lipgloss.Color("#0a2a2a"),
+		NewBg:           lipgloss.Color("#2a2a0a"),
+		ProtocolBg:      lipgloss.Color("#0a1a0a"),
+		TacticalPanelBg: lipgloss.Color("#1a0a2a"),
+		HeaderBg:        lipgloss.Color("#0a0a1a"),
 	}
 }
 
@@ -173,6 +210,15 @@ func matrixTheme() Theme {
 		StatsColor:      lipgloss.Color("#00ff41"),
 		SeparatorColor:  lipgloss.Color("#00ff41"),
 		HelpColor:       lipgloss.Color("#90ee90"),
+		// Background colors - matrix green tints
+		SessionBg:       lipgloss.Color("#0a2a0a"),
+		BeaconBg:        lipgloss.Color("#1a2a0a"),
+		DeadBg:          lipgloss.Color("#0a1a0a"),
+		PrivilegedBg:    lipgloss.Color("#2a2a0a"),
+		NewBg:           lipgloss.Color("#1a2a00"),
+		ProtocolBg:      lipgloss.Color("#0a1a0a"),
+		TacticalPanelBg: lipgloss.Color("#0a2a0a"),
+		HeaderBg:        lipgloss.Color("#0a1a0a"),
 	}
 }
 
@@ -203,6 +249,15 @@ func tacticalTheme() Theme {
 		StatsColor:      lipgloss.Color("#ff6b35"),
 		SeparatorColor:  lipgloss.Color("#ff6b35"),
 		HelpColor:       lipgloss.Color("#a0a0a0"),
+		// Background colors - military tactical tints
+		SessionBg:       lipgloss.Color("#0a2a1a"),
+		BeaconBg:        lipgloss.Color("#2a2a0a"),
+		DeadBg:          lipgloss.Color("#2a0a0a"),
+		PrivilegedBg:    lipgloss.Color("#2a1a0a"),
+		NewBg:           lipgloss.Color("#2a2a00"),
+		ProtocolBg:      lipgloss.Color("#0a1a2a"),
+		TacticalPanelBg: lipgloss.Color("#1a2a1a"),
+		HeaderBg:        lipgloss.Color("#1a1a1a"),
 	}
 }
 
@@ -233,6 +288,15 @@ func pastelTheme() Theme {
 		StatsColor:      lipgloss.Color("#ff99c8"),
 		SeparatorColor:  lipgloss.Color("#a9def9"),
 		HelpColor:       lipgloss.Color("#b0b0b0"),
+		// Background colors - soft pastel tints
+		SessionBg:       lipgloss.Color("#1a2a1a"),
+		BeaconBg:        lipgloss.Color("#2a1a1a"),
+		DeadBg:          lipgloss.Color("#2a2a2a"),
+		PrivilegedBg:    lipgloss.Color("#2a2a1a"),
+		NewBg:           lipgloss.Color("#2a2a00"),
+		ProtocolBg:      lipgloss.Color("#1a1a2a"),
+		TacticalPanelBg: lipgloss.Color("#1a1a2a"),
+		HeaderBg:        lipgloss.Color("#1a1a1a"),
 	}
 }
 
@@ -263,6 +327,15 @@ func heatmapTheme() Theme {
 		StatsColor:      lipgloss.Color("#ff4444"),
 		SeparatorColor:  lipgloss.Color("#ff8800"),
 		HelpColor:       lipgloss.Color("#aaaaaa"),
+		// Background colors - heat gradient
+		SessionBg:       lipgloss.Color("#2a0a0a"),
+		BeaconBg:        lipgloss.Color("#2a2a0a"),
+		DeadBg:          lipgloss.Color("#1a1a1a"),
+		PrivilegedBg:    lipgloss.Color("#2a0000"),
+		NewBg:           lipgloss.Color("#2a0a00"),
+		ProtocolBg:      lipgloss.Color("#1a0a0a"),
+		TacticalPanelBg: lipgloss.Color("#2a1a1a"),
+		HeaderBg:        lipgloss.Color("#1a0a0a"),
 	}
 }
 
@@ -293,6 +366,15 @@ func lipGlossTheme() Theme {
 		StatsColor:      lipgloss.Color("#d946ef"), // Fuchsia
 		SeparatorColor:  lipgloss.Color("#8b5cf6"), // Purple
 		HelpColor:       lipgloss.Color("#a1a1aa"), // Light gray
+		// Background colors - gradient purple/pink/blue tints
+		SessionBg:       lipgloss.Color("#1a1a2a"),
+		BeaconBg:        lipgloss.Color("#2a1a2a"),
+		DeadBg:          lipgloss.Color("#2a2a2a"),
+		PrivilegedBg:    lipgloss.Color("#2a1a2a"),
+		NewBg:           lipgloss.Color("#2a2a1a"),
+		ProtocolBg:      lipgloss.Color("#1a1a2a"),
+		TacticalPanelBg: lipgloss.Color("#1a1a2a"),
+		HeaderBg:        lipgloss.Color("#1a1a1a"),
 	}
 }
 
