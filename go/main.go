@@ -23,6 +23,98 @@ var (
 	lostAgentTimeout = 5 * time.Minute
 )
 
+// ActivitySample represents a single data point in time
+type ActivitySample struct {
+	Timestamp       time.Time
+	SessionsCount   int
+	BeaconsCount    int
+	NewCount        int
+	PrivilegedCount int
+}
+
+// ActivityTracker tracks activity over time (12-hour rolling window)
+type ActivityTracker struct {
+	StartTime       time.Time
+	Samples         []ActivitySample
+	SampleInterval  time.Duration // 10 minutes
+	MaxSamples      int           // 72 samples (12 hours)
+	mutex           sync.RWMutex
+}
+
+// NewActivityTracker creates a new activity tracker
+func NewActivityTracker() *ActivityTracker {
+	return &ActivityTracker{
+		StartTime:      time.Now(),
+		Samples:        []ActivitySample{},
+		SampleInterval: 10 * time.Minute,
+		MaxSamples:     72, // 12 hours at 10-minute intervals
+	}
+}
+
+// AddSample adds a new activity sample (rolling window)
+func (at *ActivityTracker) AddSample(sessions, beacons, newAgents, privileged int) {
+	at.mutex.Lock()
+	defer at.mutex.Unlock()
+	
+	sample := ActivitySample{
+		Timestamp:       time.Now(),
+		SessionsCount:   sessions,
+		BeaconsCount:    beacons,
+		NewCount:        newAgents,
+		PrivilegedCount: privileged,
+	}
+	
+	at.Samples = append(at.Samples, sample)
+	
+	// Keep only last MaxSamples (rolling window)
+	if len(at.Samples) > at.MaxSamples {
+		at.Samples = at.Samples[len(at.Samples)-at.MaxSamples:]
+	}
+}
+
+// GetSamples returns a copy of all samples (thread-safe)
+func (at *ActivityTracker) GetSamples() []ActivitySample {
+	at.mutex.RLock()
+	defer at.mutex.RUnlock()
+	
+	samplesCopy := make([]ActivitySample, len(at.Samples))
+	copy(samplesCopy, at.Samples)
+	return samplesCopy
+}
+
+// GetSessionDuration returns how long the tracker has been running
+func (at *ActivityTracker) GetSessionDuration() time.Duration {
+	return time.Since(at.StartTime)
+}
+
+// sampleCurrentActivity samples the current agent state and adds to tracker
+func (m *model) sampleCurrentActivity() {
+	if m.activityTracker == nil {
+		return
+	}
+	
+	// Count metrics from current agents
+	newCount := 0
+	privilegedCount := 0
+	
+	for _, agent := range m.agents {
+		if agent.IsNew {
+			newCount++
+		}
+		if agent.IsPrivileged {
+			privilegedCount++
+		}
+	}
+	
+	// Add sample to tracker
+	m.activityTracker.AddSample(
+		m.stats.Sessions,
+		m.stats.Beacons,
+		newCount,
+		privilegedCount,
+	)
+}
+
 // Agent represents a Sliver agent
 type Agent struct {
 	ID            string
@@ -66,26 +158,28 @@ type Stats struct {
 
 // Model represents the application state
 type model struct {
-	agents       []Agent
-	stats        Stats
-	spinner      spinner.Model
-	viewport     viewport.Model // Scrollable viewport for agent list
-	loading      bool
-	err          error
-	lastUpdate   time.Time
-	termWidth    int  // Terminal width for responsive layout
-	termHeight   int  // Terminal height
-	ready        bool // Viewport initialized
-	themeIndex   int  // Current theme index
-	theme        Theme // Current theme
-	viewIndex    int  // Current view index
-	view         View // Current view
+	agents          []Agent
+	stats           Stats
+	spinner         spinner.Model
+	viewport        viewport.Model // Scrollable viewport for agent list
+	loading         bool
+	err             error
+	lastUpdate      time.Time
+	termWidth       int  // Terminal width for responsive layout
+	termHeight      int  // Terminal height
+	ready           bool // Viewport initialized
+	themeIndex      int  // Current theme index
+	theme           Theme // Current theme
+	viewIndex       int  // Current view index
+	view            View // Current view
+	activityTracker *ActivityTracker // Activity tracking over time
 }
 
 func (m model) Init() tea.Cmd {
 	return tea.Batch(
 		m.spinner.Tick,
 		fetchAgentsCmd,
+		sampleActivityCmd, // Start activity sampling timer
 	)
 }
 
@@ -184,6 +278,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.lastUpdate = time.Now()
 		m.err = nil
 		
+		// Sample activity immediately when agents are fetched
+		m.sampleCurrentActivity()
+		
 		// Update viewport content with new agent list
 		if m.ready {
 			m.updateViewportContent()
@@ -192,6 +289,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, tea.Tick(5*time.Second, func(t time.Time) tea.Msg {
 			return refreshMsg{}
 		}))
+
+	case activitySampleMsg:
+		// Sample activity when timer triggers
+		m.sampleCurrentActivity()
+		// Schedule next sample
+		cmds = append(cmds, sampleActivityCmd)
 
 	case refreshMsg:
 		m.loading = true
@@ -625,18 +728,19 @@ func (m model) renderDashboard() string {
 	content.WriteString(headerStyle.Render("📊 DASHBOARD - OPERATIONAL ANALYTICS"))
 	content.WriteString("\n\n")
 	
-	// Create 2x2 grid layout for panels
-	// Top row: C2 Infrastructure | Architecture Distribution
-	// Bottom row: Task Queue Monitor | Sparkline Graphs
+	// Create 2x3 grid layout for panels
+	// Top row: C2 Infrastructure | Architecture Distribution | Task Queue Monitor
+	// Bottom row: Security Status | Activity Metrics | (future expansion)
 	
 	c2Panel := m.renderC2InfrastructurePanel()
 	archPanel := m.renderArchitecturePanel()
 	taskPanel := m.renderTaskQueuePanel()
+	securityPanel := m.renderSecurityStatusPanel()
 	sparklinePanel := m.renderSparklinePanel()
 	
 	// Use lipgloss JoinHorizontal to place panels side by side
-	topRow := lipgloss.JoinHorizontal(lipgloss.Top, c2Panel, "  ", archPanel)
-	bottomRow := lipgloss.JoinHorizontal(lipgloss.Top, taskPanel, "  ", sparklinePanel)
+	topRow := lipgloss.JoinHorizontal(lipgloss.Top, c2Panel, "  ", archPanel, "  ", taskPanel)
+	bottomRow := lipgloss.JoinHorizontal(lipgloss.Top, securityPanel, "  ", sparklinePanel)
 	
 	content.WriteString(topRow)
 	content.WriteString("\n\n")
@@ -651,7 +755,7 @@ func (m model) renderC2InfrastructurePanel() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.theme.TacticalBorder).
 		Padding(1, 2).
-		Width(50).
+		Width(38).
 		Height(15)
 	
 	titleStyle := lipgloss.NewStyle().
@@ -720,7 +824,7 @@ func (m model) renderArchitecturePanel() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.theme.TacticalBorder).
 		Padding(1, 2).
-		Width(50).
+		Width(38).
 		Height(15)
 	
 	titleStyle := lipgloss.NewStyle().
@@ -737,6 +841,10 @@ func (m model) renderArchitecturePanel() string {
 	
 	mutedStyle := lipgloss.NewStyle().
 		Foreground(m.theme.TacticalMuted)
+	
+	// Cyan bar style for architecture
+	barStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#00CED1")) // Dark turquoise
 	
 	var lines []string
 	lines = append(lines, titleStyle.Render("🔹 ARCHITECTURE DISTRIBUTION"))
@@ -780,7 +888,7 @@ func (m model) renderArchitecturePanel() string {
 				icon,
 				labelStyle.Render(fmt.Sprintf("%-10s", arch))))
 			lines = append(lines, fmt.Sprintf("  %s %s",
-				bar,
+				barStyle.Render(bar),
 				valueStyle.Render(fmt.Sprintf("%3.0f%% (%d)", percentage, count))))
 			lines = append(lines, "")
 		}
@@ -795,7 +903,7 @@ func (m model) renderTaskQueuePanel() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.theme.TacticalBorder).
 		Padding(1, 2).
-		Width(50).
+		Width(38).
 		Height(15)
 	
 	titleStyle := lipgloss.NewStyle().
@@ -811,6 +919,10 @@ func (m model) renderTaskQueuePanel() string {
 	
 	mutedStyle := lipgloss.NewStyle().
 		Foreground(m.theme.TacticalMuted)
+	
+	// Cyan bar style for task progress
+	barStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#00CED1")) // Dark turquoise
 	
 	var lines []string
 	lines = append(lines, titleStyle.Render("📋 TASK QUEUE MONITOR"))
@@ -846,7 +958,7 @@ func (m model) renderTaskQueuePanel() string {
 				statusIcon,
 				labelStyle.Render(fmt.Sprintf("%-15s", agent.Hostname[:min(15, len(agent.Hostname))]))))
 			lines = append(lines, fmt.Sprintf("  %s %s",
-				bar,
+				barStyle.Render(bar),
 				valueStyle.Render(fmt.Sprintf("%d/%d", agent.TasksCompleted, agent.TasksCount))))
 			
 			if beaconsWithTasks >= 5 {
@@ -864,13 +976,13 @@ func (m model) renderTaskQueuePanel() string {
 	return panelStyle.Render(strings.Join(lines, "\n"))
 }
 
-// renderSparklinePanel shows activity over time
-func (m model) renderSparklinePanel() string {
+// renderSecurityStatusPanel shows agent security states
+func (m model) renderSecurityStatusPanel() string {
 	panelStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.theme.TacticalBorder).
 		Padding(1, 2).
-		Width(50).
+		Width(38).
 		Height(15)
 	
 	titleStyle := lipgloss.NewStyle().
@@ -881,67 +993,435 @@ func (m model) renderSparklinePanel() string {
 	labelStyle := lipgloss.NewStyle().
 		Foreground(m.theme.TacticalSection)
 	
-	valueStyle := lipgloss.NewStyle().
-		Foreground(m.theme.TacticalValue)
+	stealthStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#9370DB")). // Medium purple
+		Bold(true)
+	
+	burnedStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#FF4500")). // Orange red
+		Bold(true)
+	
+	mutedStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TacticalMuted)
 	
 	var lines []string
-	lines = append(lines, titleStyle.Render("📈 ACTIVITY METRICS"))
+	lines = append(lines, titleStyle.Render("🔒 SECURITY STATUS"))
 	lines = append(lines, "")
 	
-	// Current snapshot (we'll use simple bars for now)
-	// In a real implementation, you'd track historical data
-	
-	sessionsCount := m.stats.Sessions
-	beaconsCount := m.stats.Beacons
-	deadCount := 0
-	newCount := 0
+	// Count agents by security state
+	stealthAgents := []Agent{}
+	burnedAgents := []Agent{}
+	normalAgents := 0
 	
 	for _, agent := range m.agents {
 		if agent.IsDead {
-			deadCount++
+			continue // Skip dead agents
 		}
-		if agent.IsNew {
-			newCount++
+		
+		if agent.Evasion {
+			stealthAgents = append(stealthAgents, agent)
+		} else if agent.Burned {
+			burnedAgents = append(burnedAgents, agent)
+		} else {
+			normalAgents++
 		}
 	}
 	
-	maxCount := max(max(sessionsCount, beaconsCount), max(deadCount, newCount))
-	if maxCount == 0 {
-		maxCount = 1
+	// Show stealth agents
+	if len(stealthAgents) > 0 {
+		lines = append(lines, stealthStyle.Render("🕵️  STEALTH MODE"))
+		lines = append(lines, mutedStyle.Render(fmt.Sprintf("   %d agent(s) in evasion mode", len(stealthAgents))))
+		lines = append(lines, "")
+		for i, agent := range stealthAgents {
+			if i >= 3 {
+				lines = append(lines, mutedStyle.Render(fmt.Sprintf("   ... and %d more", len(stealthAgents)-3)))
+				break
+			}
+			lines = append(lines, labelStyle.Render(fmt.Sprintf("   • %s", agent.Hostname)))
+		}
+		lines = append(lines, "")
 	}
 	
-	// Sessions sparkline
-	sessionsBar := generateSparkline(sessionsCount, maxCount, 20)
-	lines = append(lines, labelStyle.Render("Sessions  "))
-	lines = append(lines, fmt.Sprintf("  %s %s",
-		sessionsBar,
-		valueStyle.Render(fmt.Sprintf("Current: %d", sessionsCount))))
-	lines = append(lines, "")
+	// Show burned agents
+	if len(burnedAgents) > 0 {
+		lines = append(lines, burnedStyle.Render("🔥 COMPROMISED"))
+		lines = append(lines, mutedStyle.Render(fmt.Sprintf("   %d agent(s) burned/detected", len(burnedAgents))))
+		lines = append(lines, "")
+		for i, agent := range burnedAgents {
+			if i >= 3 {
+				lines = append(lines, mutedStyle.Render(fmt.Sprintf("   ... and %d more", len(burnedAgents)-3)))
+				break
+			}
+			lines = append(lines, labelStyle.Render(fmt.Sprintf("   • %s", agent.Hostname)))
+		}
+		lines = append(lines, "")
+	}
 	
-	// Beacons sparkline
-	beaconsBar := generateSparkline(beaconsCount, maxCount, 20)
-	lines = append(lines, labelStyle.Render("Beacons   "))
-	lines = append(lines, fmt.Sprintf("  %s %s",
-		beaconsBar,
-		valueStyle.Render(fmt.Sprintf("Current: %d", beaconsCount))))
-	lines = append(lines, "")
-	
-	// Dead sparkline
-	deadBar := generateSparkline(deadCount, maxCount, 20)
-	lines = append(lines, labelStyle.Render("Dead      "))
-	lines = append(lines, fmt.Sprintf("  %s %s",
-		deadBar,
-		valueStyle.Render(fmt.Sprintf("Current: %d", deadCount))))
-	lines = append(lines, "")
-	
-	// New sparkline
-	newBar := generateSparkline(newCount, maxCount, 20)
-	lines = append(lines, labelStyle.Render("New       "))
-	lines = append(lines, fmt.Sprintf("  %s %s",
-		newBar,
-		valueStyle.Render(fmt.Sprintf("Current: %d", newCount))))
+	// Show normal status if no special states
+	if len(stealthAgents) == 0 && len(burnedAgents) == 0 {
+		lines = append(lines, mutedStyle.Render("All agents operating normally"))
+		lines = append(lines, "")
+		lines = append(lines, labelStyle.Render(fmt.Sprintf("✓ %d agents in standard mode", normalAgents)))
+	}
 	
 	return panelStyle.Render(strings.Join(lines, "\n"))
+}
+
+// renderSparklinePanel shows activity over time
+func (m model) renderSparklinePanel() string {
+	panelStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.theme.TacticalBorder).
+		Padding(1, 2).
+		Width(78). // Wider to span 2 columns
+		Height(18) // Taller for time axis
+	
+	titleStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TacticalBorder).
+		Bold(true).
+		Underline(true)
+	
+	labelStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TacticalSection)
+	
+	mutedStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TacticalMuted)
+	
+	// Green style for sparklines
+	sparklineStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#00FF00")) // Bright green
+	
+	var lines []string
+	
+	// Get activity samples
+	samples := m.activityTracker.GetSamples()
+	sessionDuration := m.activityTracker.GetSessionDuration()
+	
+	// Title with session duration
+	durationStr := formatDuration(sessionDuration)
+	lines = append(lines, titleStyle.Render("ACTIVITY METRICS (Last 12 Hours)"))
+	lines = append(lines, mutedStyle.Render(fmt.Sprintf("Session: %s | Samples: %d/72", 
+		durationStr, len(samples))))
+	lines = append(lines, "")
+	
+	sparklineWidth := 48 // Fixed width for all sparklines
+	
+	if len(samples) == 0 {
+		lines = append(lines, mutedStyle.Render("Collecting data... (first sample in 10min)"))
+		return panelStyle.Render(strings.Join(lines, "\n"))
+	}
+	
+	// Calculate statistics
+	stats := calculateActivityStats(samples)
+	
+	// Generate sparklines with proper time mapping
+	sessionsSparkline := generateHistoricalSparkline(samples, "sessions", sparklineWidth)
+	beaconsSparkline := generateHistoricalSparkline(samples, "beacons", sparklineWidth)
+	newSparkline := generateHistoricalSparkline(samples, "new", sparklineWidth)
+	privilegedSparkline := generateHistoricalSparkline(samples, "privileged", sparklineWidth)
+	
+	// Sessions
+	lines = append(lines, fmt.Sprintf("%s  %s  Peak: %-2d  Now: %-2d",
+		labelStyle.Render("Sessions    "),
+		sparklineStyle.Render(sessionsSparkline),
+		stats.SessionsPeak,
+		stats.SessionsCurrent))
+	
+	// Beacons
+	lines = append(lines, fmt.Sprintf("%s  %s  Peak: %-2d  Now: %-2d",
+		labelStyle.Render("Beacons     "),
+		sparklineStyle.Render(beaconsSparkline),
+		stats.BeaconsPeak,
+		stats.BeaconsCurrent))
+	
+	// New Agents
+	lines = append(lines, fmt.Sprintf("%s  %s  Peak: %-2d  Now: %-2d",
+		labelStyle.Render("New Agents  "),
+		sparklineStyle.Render(newSparkline),
+		stats.NewPeak,
+		stats.NewCurrent))
+	
+	// Privileged
+	lines = append(lines, fmt.Sprintf("%s  %s  Peak: %-2d  Now: %-2d",
+		labelStyle.Render("Privileged  "),
+		sparklineStyle.Render(privilegedSparkline),
+		stats.PrivilegedPeak,
+		stats.PrivilegedCurrent))
+	
+	lines = append(lines, "")
+	
+	// Time axis (aligned with sparkline)
+	timeAxis := generateTimeAxis(samples, sparklineWidth, m.activityTracker.StartTime)
+	lines = append(lines, mutedStyle.Render(timeAxis))
+	
+	lines = append(lines, "")
+	
+	// Session statistics
+	lines = append(lines, labelStyle.Render("Averages"))
+	lines = append(lines, mutedStyle.Render(fmt.Sprintf(
+		"  Sess: %.1f | Beacons: %.1f | New: %.1f | Priv: %.1f",
+		stats.SessionsAvg, stats.BeaconsAvg, stats.NewAvg, stats.PrivilegedAvg)))
+	
+	return panelStyle.Render(strings.Join(lines, "\n"))
+}
+
+// ActivityStats holds statistical data
+type ActivityStats struct {
+	SessionsPeak     int
+	SessionsCurrent  int
+	SessionsAvg      float64
+	BeaconsPeak      int
+	BeaconsCurrent   int
+	BeaconsAvg       float64
+	NewPeak          int
+	NewCurrent       int
+	NewAvg           float64
+	PrivilegedPeak   int
+	PrivilegedCurrent int
+	PrivilegedAvg    float64
+}
+
+// calculateActivityStats calculates statistics from samples
+func calculateActivityStats(samples []ActivitySample) ActivityStats {
+	if len(samples) == 0 {
+		return ActivityStats{}
+	}
+	
+	stats := ActivityStats{}
+	var sessionsSum, beaconsSum, newSum, privilegedSum int
+	
+	for i, sample := range samples {
+		// Track peaks
+		if sample.SessionsCount > stats.SessionsPeak {
+			stats.SessionsPeak = sample.SessionsCount
+		}
+		if sample.BeaconsCount > stats.BeaconsPeak {
+			stats.BeaconsPeak = sample.BeaconsCount
+		}
+		if sample.NewCount > stats.NewPeak {
+			stats.NewPeak = sample.NewCount
+		}
+		if sample.PrivilegedCount > stats.PrivilegedPeak {
+			stats.PrivilegedPeak = sample.PrivilegedCount
+		}
+		
+		// Sum for averages
+		sessionsSum += sample.SessionsCount
+		beaconsSum += sample.BeaconsCount
+		newSum += sample.NewCount
+		privilegedSum += sample.PrivilegedCount
+		
+		// Current (last sample)
+		if i == len(samples)-1 {
+			stats.SessionsCurrent = sample.SessionsCount
+			stats.BeaconsCurrent = sample.BeaconsCount
+			stats.NewCurrent = sample.NewCount
+			stats.PrivilegedCurrent = sample.PrivilegedCount
+		}
+	}
+	
+	count := float64(len(samples))
+	stats.SessionsAvg = float64(sessionsSum) / count
+	stats.BeaconsAvg = float64(beaconsSum) / count
+	stats.NewAvg = float64(newSum) / count
+	stats.PrivilegedAvg = float64(privilegedSum) / count
+	
+	return stats
+}
+
+// generateHistoricalSparkline generates sparkline from historical samples
+func generateHistoricalSparkline(samples []ActivitySample, metric string, width int) string {
+	if len(samples) == 0 {
+		return strings.Repeat("░", width)
+	}
+	
+	// Extract values for the specified metric
+	values := make([]int, len(samples))
+	maxValue := 0
+	
+	for i, sample := range samples {
+		var value int
+		switch metric {
+		case "sessions":
+			value = sample.SessionsCount
+		case "beacons":
+			value = sample.BeaconsCount
+		case "new":
+			value = sample.NewCount
+		case "privileged":
+			value = sample.PrivilegedCount
+		}
+		values[i] = value
+		if value > maxValue {
+			maxValue = value
+		}
+	}
+	
+	if maxValue == 0 {
+		return strings.Repeat("░", width)
+	}
+	
+	// Map samples to sparkline width (interpolation if needed)
+	var sparkline strings.Builder
+	
+	if len(samples) <= width {
+		// Fewer samples than width - pad with empty space on left
+		padding := width - len(samples)
+		sparkline.WriteString(strings.Repeat("░", padding))
+		
+		// Render each sample as a character
+		for _, value := range values {
+			sparkline.WriteString(heightToChar(value, maxValue))
+		}
+	} else {
+		// More samples than width - downsample
+		samplesPerChar := float64(len(samples)) / float64(width)
+		
+		for i := 0; i < width; i++ {
+			startIdx := int(float64(i) * samplesPerChar)
+			endIdx := int(float64(i+1) * samplesPerChar)
+			if endIdx > len(values) {
+				endIdx = len(values)
+			}
+			
+			// Average values in this bucket
+			sum := 0
+			count := 0
+			for j := startIdx; j < endIdx; j++ {
+				sum += values[j]
+				count++
+			}
+			avg := 0
+			if count > 0 {
+				avg = sum / count
+			}
+			
+			sparkline.WriteString(heightToChar(avg, maxValue))
+		}
+	}
+	
+	return sparkline.String()
+}
+
+// heightToChar converts a value to a block character based on height
+func heightToChar(value, maxValue int) string {
+	if maxValue == 0 {
+		return "░"
+	}
+	
+	percentage := float64(value) / float64(maxValue)
+	
+	// Use block characters for 8 levels
+	if percentage == 0 {
+		return "░"
+	} else if percentage < 0.125 {
+		return "▁"
+	} else if percentage < 0.25 {
+		return "▂"
+	} else if percentage < 0.375 {
+		return "▃"
+	} else if percentage < 0.5 {
+		return "▄"
+	} else if percentage < 0.625 {
+		return "▅"
+	} else if percentage < 0.75 {
+		return "▆"
+	} else if percentage < 0.875 {
+		return "▇"
+	} else {
+		return "█"
+	}
+}
+
+// generateTimeAxis generates time labels aligned with sparkline
+func generateTimeAxis(samples []ActivitySample, width int, startTime time.Time) string {
+	if len(samples) == 0 {
+		return strings.Repeat(" ", width)
+	}
+	
+	// Generate hour markers for 12-hour window
+	var axis strings.Builder
+	
+	// Calculate which hour labels to show
+	now := time.Now()
+	sessionDuration := now.Sub(startTime)
+	
+	if sessionDuration < 12*time.Hour {
+		// Partial session - show from start hour to now
+		hoursElapsed := int(sessionDuration.Hours()) + 1
+		if hoursElapsed > 12 {
+			hoursElapsed = 12
+		}
+		
+		charsPerHour := width / hoursElapsed
+		if charsPerHour < 1 {
+			charsPerHour = 1
+		}
+		
+		for i := 0; i < hoursElapsed; i++ {
+			hourTime := startTime.Add(time.Duration(i) * time.Hour)
+			label := hourTime.Format("15:04")
+			
+			if i == hoursElapsed-1 {
+				// Last label - add "Now"
+				axis.WriteString(label)
+				remaining := width - axis.Len()
+				if remaining > 4 {
+					axis.WriteString(strings.Repeat(" ", remaining-3))
+					axis.WriteString("Now")
+				}
+			} else {
+				axis.WriteString(label)
+				// Pad to next hour marker
+				padding := charsPerHour - len(label)
+				if padding > 0 {
+					axis.WriteString(strings.Repeat(" ", padding))
+				}
+			}
+		}
+	} else {
+		// Full 12-hour window
+		hoursToShow := 6 // Show every 2 hours for clarity
+		charsPerLabel := width / hoursToShow
+		
+		for i := 0; i < hoursToShow; i++ {
+			hourOffset := i * 2 // Every 2 hours
+			hourTime := now.Add(-time.Duration(12-hourOffset) * time.Hour)
+			label := hourTime.Format("15:04")
+			
+			if i == hoursToShow-1 {
+				axis.WriteString(strings.Repeat(" ", width-axis.Len()-3))
+				axis.WriteString("Now")
+			} else {
+				axis.WriteString(label)
+				padding := charsPerLabel - len(label)
+				if padding > 0 && i < hoursToShow-1 {
+					axis.WriteString(strings.Repeat(" ", padding))
+				}
+			}
+		}
+	}
+	
+	// Ensure exact width
+	result := axis.String()
+	if len(result) < width {
+		result += strings.Repeat(" ", width-len(result))
+	} else if len(result) > width {
+		result = result[:width]
+	}
+	
+	return result
+}
+
+// formatDuration formats a duration in human-readable form
+func formatDuration(d time.Duration) string {
+	hours := int(d.Hours())
+	minutes := int(d.Minutes()) % 60
+	
+	if hours > 0 {
+		return fmt.Sprintf("%dh %dm", hours, minutes)
+	}
+	return fmt.Sprintf("%dm", minutes)
 }
 
 // generateSparkline generates a simple bar graph
@@ -1371,6 +1851,8 @@ type agentsMsg struct {
 
 type refreshMsg struct{}
 
+type activitySampleMsg struct{}
+
 type errMsg struct {
 	err error
 }
@@ -1395,6 +1877,12 @@ func fetchAgentsCmd() tea.Msg {
 	}
 }
 
+// sampleActivityCmd waits for the sample interval then triggers a sample
+func sampleActivityCmd() tea.Msg {
+	time.Sleep(10 * time.Minute) // Sample every 10 minutes
+	return activitySampleMsg{}
+}
+
 func main() {
 	// Create spinner
 	s := spinner.New()
@@ -1409,15 +1897,16 @@ func main() {
 
 	// Initialize model with default terminal size as fallback
 	m := model{
-		agents:     []Agent{},
-		spinner:    s,
-		loading:    true,
-		termWidth:  180, // Default fallback width
-		termHeight: 40,  // Default fallback height
-		themeIndex: 0,   // Start with default theme
-		theme:      defaultTheme,
-		viewIndex:  0,   // Start with default view
-		view:       defaultView,
+		agents:          []Agent{},
+		spinner:         s,
+		loading:         true,
+		termWidth:       180, // Default fallback width
+		termHeight:      40,  // Default fallback height
+		themeIndex:      0,   // Start with default theme
+		theme:           defaultTheme,
+		viewIndex:       0,   // Start with default view
+		view:            defaultView,
+		activityTracker: NewActivityTracker(), // Initialize activity tracker
 	}
 
 	// Create and run program with alt screen
