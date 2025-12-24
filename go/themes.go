@@ -53,6 +53,7 @@ var themes = []Theme{
 	tacticalTheme(),
 	pastelTheme(),
 	heatmapTheme(),
+	lipGlossTheme(),
 }
 
 // defaultTheme - Current Dracula-inspired theme (DEFAULT)
@@ -262,6 +263,36 @@ func heatmapTheme() Theme {
 		StatsColor:      lipgloss.Color("#ff4444"),
 		SeparatorColor:  lipgloss.Color("#ff8800"),
 		HelpColor:       lipgloss.Color("#aaaaaa"),
+	}
+}
+
+// lipGlossTheme - Inspired by Charm's Lip Gloss aesthetic with purple/pink/blue gradients
+func lipGlossTheme() Theme {
+	return Theme{
+		Name:            "Lip Gloss",
+		TitleColor:      lipgloss.Color("#d946ef"), // Bright magenta/fuchsia
+		LogoColor:       lipgloss.Color("#a855f7"), // Purple
+		StatusColor:     lipgloss.Color("#c084fc"), // Light purple
+		SessionColor:    lipgloss.Color("#22d3ee"), // Cyan blue
+		BeaconColor:     lipgloss.Color("#f0abfc"), // Pink
+		DeadColor:       lipgloss.Color("#6b7280"), // Gray
+		PrivilegedUser:  lipgloss.Color("#e879f9"), // Bright pink
+		NormalUser:      lipgloss.Color("#60a5fa"), // Blue
+		HostnameColor:   lipgloss.Color("#60a5fa"),
+		ProtocolMTLS:    lipgloss.Color("#a78bfa"), // Violet
+		ProtocolHTTP:    lipgloss.Color("#38bdf8"), // Sky blue
+		ProtocolDNS:     lipgloss.Color("#2dd4bf"), // Teal
+		ProtocolTCP:     lipgloss.Color("#c084fc"), // Purple
+		ProtocolDefault: lipgloss.Color("#818cf8"), // Indigo
+		NewBadgeColor:   lipgloss.Color("#fbbf24"), // Amber yellow
+		PrivBadgeColor:  lipgloss.Color("#f9a8d4"), // Pink
+		TacticalBorder:  lipgloss.Color("#d946ef"), // Fuchsia
+		TacticalSection: lipgloss.Color("#a78bfa"), // Violet
+		TacticalValue:   lipgloss.Color("#22d3ee"), // Cyan
+		TacticalMuted:   lipgloss.Color("#9ca3af"), // Gray
+		StatsColor:      lipgloss.Color("#d946ef"), // Fuchsia
+		SeparatorColor:  lipgloss.Color("#8b5cf6"), // Purple
+		HelpColor:       lipgloss.Color("#a1a1aa"), // Light gray
 	}
 }
 
