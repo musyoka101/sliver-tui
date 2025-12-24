@@ -730,16 +730,16 @@ func (m model) renderDashboard() string {
 	
 	// Create 2x2 grid layout for panels
 	// Top row: C2 Infrastructure | Architecture Distribution
-	// Bottom row: Task Queue Monitor | Sparkline Graphs
+	// Bottom row: Security Status | Activity Metrics
 	
 	c2Panel := m.renderC2InfrastructurePanel()
 	archPanel := m.renderArchitecturePanel()
-	taskPanel := m.renderTaskQueuePanel()
+	securityPanel := m.renderSecurityStatusPanel()
 	sparklinePanel := m.renderSparklinePanel()
 	
 	// Use lipgloss JoinHorizontal to place panels side by side
 	topRow := lipgloss.JoinHorizontal(lipgloss.Top, c2Panel, "  ", archPanel)
-	bottomRow := lipgloss.JoinHorizontal(lipgloss.Top, taskPanel, "  ", sparklinePanel)
+	bottomRow := lipgloss.JoinHorizontal(lipgloss.Top, securityPanel, "  ", sparklinePanel)
 	
 	content.WriteString(topRow)
 	content.WriteString("\n\n")
@@ -970,6 +970,97 @@ func (m model) renderTaskQueuePanel() string {
 		lines = append(lines, mutedStyle.Render("No active beacon tasks"))
 		lines = append(lines, "")
 		lines = append(lines, mutedStyle.Render("All beacons are idle 💤"))
+	}
+	
+	return panelStyle.Render(strings.Join(lines, "\n"))
+}
+
+// renderSecurityStatusPanel shows agent security states
+func (m model) renderSecurityStatusPanel() string {
+	panelStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.theme.TacticalBorder).
+		Padding(1, 2).
+		Width(50).
+		Height(15)
+	
+	titleStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TacticalBorder).
+		Bold(true).
+		Underline(true)
+	
+	labelStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TacticalSection)
+	
+	stealthStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#9370DB")). // Medium purple
+		Bold(true)
+	
+	burnedStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#FF4500")). // Orange red
+		Bold(true)
+	
+	mutedStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TacticalMuted)
+	
+	var lines []string
+	lines = append(lines, titleStyle.Render("🔒 SECURITY STATUS"))
+	lines = append(lines, "")
+	
+	// Count agents by security state
+	stealthAgents := []Agent{}
+	burnedAgents := []Agent{}
+	normalAgents := 0
+	
+	for _, agent := range m.agents {
+		if agent.IsDead {
+			continue // Skip dead agents
+		}
+		
+		if agent.Evasion {
+			stealthAgents = append(stealthAgents, agent)
+		} else if agent.Burned {
+			burnedAgents = append(burnedAgents, agent)
+		} else {
+			normalAgents++
+		}
+	}
+	
+	// Show stealth agents
+	if len(stealthAgents) > 0 {
+		lines = append(lines, stealthStyle.Render("🕵️  STEALTH MODE"))
+		lines = append(lines, mutedStyle.Render(fmt.Sprintf("   %d agent(s) in evasion mode", len(stealthAgents))))
+		lines = append(lines, "")
+		for i, agent := range stealthAgents {
+			if i >= 3 {
+				lines = append(lines, mutedStyle.Render(fmt.Sprintf("   ... and %d more", len(stealthAgents)-3)))
+				break
+			}
+			lines = append(lines, labelStyle.Render(fmt.Sprintf("   • %s", agent.Hostname)))
+		}
+		lines = append(lines, "")
+	}
+	
+	// Show burned agents
+	if len(burnedAgents) > 0 {
+		lines = append(lines, burnedStyle.Render("🔥 COMPROMISED"))
+		lines = append(lines, mutedStyle.Render(fmt.Sprintf("   %d agent(s) burned/detected", len(burnedAgents))))
+		lines = append(lines, "")
+		for i, agent := range burnedAgents {
+			if i >= 3 {
+				lines = append(lines, mutedStyle.Render(fmt.Sprintf("   ... and %d more", len(burnedAgents)-3)))
+				break
+			}
+			lines = append(lines, labelStyle.Render(fmt.Sprintf("   • %s", agent.Hostname)))
+		}
+		lines = append(lines, "")
+	}
+	
+	// Show normal status if no special states
+	if len(stealthAgents) == 0 && len(burnedAgents) == 0 {
+		lines = append(lines, mutedStyle.Render("All agents operating normally"))
+		lines = append(lines, "")
+		lines = append(lines, labelStyle.Render(fmt.Sprintf("✓ %d agents in standard mode", normalAgents)))
 	}
 	
 	return panelStyle.Render(strings.Join(lines, "\n"))
@@ -1568,24 +1659,6 @@ func (m model) renderAgentLine(agent Agent) []string {
 	if agent.IsPrivileged && !agent.IsDead {
 		privBadge = " 💎"
 	}
-	
-	// Evasion badge (stealthy)
-	evasionBadge := ""
-	if agent.Evasion && !agent.IsDead {
-		evasionBadge = " " + lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#9370DB")). // Medium purple
-			Bold(true).
-			Render("🕵️ STEALTH")
-	}
-	
-	// Burned badge (compromised)
-	burnedBadge := ""
-	if agent.Burned && !agent.IsDead {
-		burnedBadge = " " + lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FF4500")). // Orange red
-			Bold(true).
-			Render("🔥 BURNED")
-	}
 
 	// Dead badge (shown after hostname)
 	deadBadge := ""
@@ -1613,7 +1686,7 @@ func (m model) renderAgentLine(agent Agent) []string {
 	
 	protocolBox := protocolBoxStyle.Render(strings.ToUpper(agent.Transport))
 	
-	line1 := fmt.Sprintf("%s%s%s▶ %s %s  %s%s%s%s%s",
+	line1 := fmt.Sprintf("%s%s%s▶ %s %s  %s%s%s",
 		connectorStyle.Render("╰────────"),
 		protocolBox,
 		connectorStyle.Render("────────"),
@@ -1622,8 +1695,6 @@ func (m model) renderAgentLine(agent Agent) []string {
 		lipgloss.NewStyle().Foreground(usernameColor).Bold(true).Render(fmt.Sprintf("%s@%s", agent.Username, agent.Hostname)),
 		deadBadge,
 		privBadge,
-		evasionBadge,
-		burnedBadge,
 	)
 
 	// Calculate indent for ID/IP lines - should align where the hostname starts
