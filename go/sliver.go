@@ -197,6 +197,15 @@ func ConvertToAgents(sessions []*clientpb.Session, beacons []*clientpb.Beacon) (
 			IsPrivileged:  isPrivileged(s.Username, s.OS),
 			IsDead:        false,
 			ProxyURL:      s.ProxyURL,
+			// Additional fields
+			PID:           s.PID,
+			Filename:      s.Filename,
+			Arch:          s.Arch,
+			Version:       s.Version,
+			ActiveC2:      s.ActiveC2,
+			LastCheckin:   s.LastCheckin,
+			Evasion:       s.Evasion,
+			Burned:        s.Burned,
 		}
 		agents = append(agents, agent)
 		hostMap[s.Hostname] = true
@@ -231,6 +240,20 @@ func ConvertToAgents(sessions []*clientpb.Session, beacons []*clientpb.Beacon) (
 			IsPrivileged:  isPrivileged(b.Username, b.OS),
 			IsDead:        isDead,
 			ProxyURL:      b.ProxyURL,
+			// Additional fields
+			PID:            b.PID,
+			Filename:       b.Filename,
+			Arch:           b.Arch,
+			Version:        b.Version,
+			ActiveC2:       b.ActiveC2,
+			Interval:       b.Interval,
+			Jitter:         b.Jitter,
+			NextCheckin:    b.NextCheckin,
+			TasksCount:     b.TasksCount,
+			TasksCompleted: b.TasksCountCompleted,
+			LastCheckin:    b.LastCheckin,
+			Evasion:        b.Evasion,
+			Burned:         b.Burned,
 		}
 		agents = append(agents, agent)
 		hostMap[b.Hostname] = true
