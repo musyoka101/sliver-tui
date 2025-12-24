@@ -45,32 +45,49 @@ A modern, high-performance **Bubble Tea** (Go) implementation of the Sliver C2 n
 
 ## Installation
 
-### Prerequisites
-- Go 1.21+ installed
-- Sliver C2 server running
-- Sliver client configured (`~/.sliver-client/configs/*.cfg`)
+### Quick Install (Recommended)
 
-### Build from Source
+**One-line installation:**
+```bash
+curl -sSL https://raw.githubusercontent.com/musyoka101/sliver-graphs/master/go/install.sh | bash
+```
+
+Or clone and run:
+```bash
+git clone https://github.com/musyoka101/sliver-graphs.git
+cd sliver-graphs/go
+./install.sh
+```
+
+The installer will:
+- ✓ Check for Go 1.21+
+- ✓ Download dependencies
+- ✓ Build optimized binary
+- ✓ Install to `~/.local/bin/sliver-tui`
+- ✓ Check for Sliver configs
+
+### Manual Build
+
+If you prefer to build manually:
 ```bash
 cd go
 go mod download
 go build -o sliver-tui .
 ```
 
-### Quick Build Script
-```bash
-cd go
-./build.sh
-```
+### Prerequisites
+- Go 1.21+ installed
+- Sliver C2 server running
+- Sliver client configured (`~/.sliver-client/configs/*.cfg`)
 
 ## Usage
 
 ```bash
-# Run the TUI
-./sliver-tui
+# If installed with install.sh (in PATH)
+sliver-tui
 
-# Or use the launcher
-./run.sh
+# Or run from build directory
+./sliver-tui
 
 # Keyboard shortcuts:
 # r - Manual refresh
