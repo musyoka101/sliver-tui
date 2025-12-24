@@ -728,17 +728,18 @@ func (m model) renderDashboard() string {
 	content.WriteString(headerStyle.Render("📊 DASHBOARD - OPERATIONAL ANALYTICS"))
 	content.WriteString("\n\n")
 	
-	// Create 2x2 grid layout for panels
-	// Top row: C2 Infrastructure | Architecture Distribution
-	// Bottom row: Security Status | Activity Metrics
+	// Create 2x3 grid layout for panels
+	// Top row: C2 Infrastructure | Architecture Distribution | Task Queue Monitor
+	// Bottom row: Security Status | Activity Metrics | (future expansion)
 	
 	c2Panel := m.renderC2InfrastructurePanel()
 	archPanel := m.renderArchitecturePanel()
+	taskPanel := m.renderTaskQueuePanel()
 	securityPanel := m.renderSecurityStatusPanel()
 	sparklinePanel := m.renderSparklinePanel()
 	
 	// Use lipgloss JoinHorizontal to place panels side by side
-	topRow := lipgloss.JoinHorizontal(lipgloss.Top, c2Panel, "  ", archPanel)
+	topRow := lipgloss.JoinHorizontal(lipgloss.Top, c2Panel, "  ", archPanel, "  ", taskPanel)
 	bottomRow := lipgloss.JoinHorizontal(lipgloss.Top, securityPanel, "  ", sparklinePanel)
 	
 	content.WriteString(topRow)
@@ -754,7 +755,7 @@ func (m model) renderC2InfrastructurePanel() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.theme.TacticalBorder).
 		Padding(1, 2).
-		Width(50).
+		Width(38).
 		Height(15)
 	
 	titleStyle := lipgloss.NewStyle().
@@ -823,7 +824,7 @@ func (m model) renderArchitecturePanel() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.theme.TacticalBorder).
 		Padding(1, 2).
-		Width(50).
+		Width(38).
 		Height(15)
 	
 	titleStyle := lipgloss.NewStyle().
@@ -902,7 +903,7 @@ func (m model) renderTaskQueuePanel() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.theme.TacticalBorder).
 		Padding(1, 2).
-		Width(50).
+		Width(38).
 		Height(15)
 	
 	titleStyle := lipgloss.NewStyle().
@@ -981,7 +982,7 @@ func (m model) renderSecurityStatusPanel() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.theme.TacticalBorder).
 		Padding(1, 2).
-		Width(50).
+		Width(38).
 		Height(15)
 	
 	titleStyle := lipgloss.NewStyle().
@@ -1072,7 +1073,7 @@ func (m model) renderSparklinePanel() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.theme.TacticalBorder).
 		Padding(1, 2).
-		Width(60). // Wider for sparklines + time axis
+		Width(78). // Wider to span 2 columns
 		Height(18) // Taller for time axis
 	
 	titleStyle := lipgloss.NewStyle().
