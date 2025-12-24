@@ -39,6 +39,21 @@ type Agent struct {
 	ProxyURL      string    // Non-empty if pivoted through another agent
 	ParentID      string    // ID of parent agent (if pivoted)
 	Children      []Agent   // Child agents (pivoted through this one)
+	
+	// Additional fields from protobuf
+	PID           int32     // Process ID
+	Filename      string    // Process filename/path (Argv[0])
+	Arch          string    // Architecture (x64, x86, arm64, etc.)
+	Version       string    // Implant version
+	ActiveC2      string    // Active C2 server URL
+	Interval      int64     // Beacon check-in interval (nanoseconds)
+	Jitter        int64     // Beacon jitter
+	NextCheckin   int64     // Next beacon check-in time (unix timestamp)
+	TasksCount    int64     // Total tasks queued
+	TasksCompleted int64    // Tasks completed
+	LastCheckin   int64     // Last check-in time (unix timestamp)
+	Evasion       bool      // Evasion mode enabled
+	Burned        bool      // Marked as compromised
 }
 
 // Stats holds statistics
@@ -86,6 +101,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "r":
 			m.loading = true
 			return m, fetchAgentsCmd
+		
+		// Dashboard keybind
+		case "d":
+			// Toggle to dashboard view directly
+			m.viewIndex = 2 // Dashboard is index 2
+			m.view = GetView(m.viewIndex)
+			if m.ready {
+				m.updateViewportContent()
+			}
+			return m, nil
 		
 		// Theme switching
 		case "t":
@@ -287,7 +312,7 @@ func (m model) View() string {
 	
 	footerLines = append(footerLines, "")
 	helpStyle := lipgloss.NewStyle().Foreground(m.theme.HelpColor)
-	helpText := "  Press 'r' to refresh  │  't' to change theme  │  'v' to change view  │  '↑↓' or 'j/k' to scroll  │  'q' to quit"
+	helpText := "  Press 'r' to refresh  │  't' to change theme  │  'v' to change view  │  'd' for dashboard  │  '↑↓' or 'j/k' to scroll  │  'q' to quit"
 	footerLines = append(footerLines, helpStyle.Render(helpText))
 	footerLines = append(footerLines, "")
 	
@@ -586,8 +611,377 @@ func (m model) renderTacticalPanel() string {
 	return rendered
 }
 
+// renderDashboard renders the dashboard view with analytics panels
+func (m model) renderDashboard() string {
+	var content strings.Builder
+	
+	// Dashboard header
+	headerStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TitleColor).
+		Bold(true).
+		Underline(true).
+		MarginBottom(1)
+	
+	content.WriteString(headerStyle.Render("📊 DASHBOARD - OPERATIONAL ANALYTICS"))
+	content.WriteString("\n\n")
+	
+	// Create 2x2 grid layout for panels
+	// Top row: C2 Infrastructure | Architecture Distribution
+	// Bottom row: Task Queue Monitor | Sparkline Graphs
+	
+	c2Panel := m.renderC2InfrastructurePanel()
+	archPanel := m.renderArchitecturePanel()
+	taskPanel := m.renderTaskQueuePanel()
+	sparklinePanel := m.renderSparklinePanel()
+	
+	// Use lipgloss JoinHorizontal to place panels side by side
+	topRow := lipgloss.JoinHorizontal(lipgloss.Top, c2Panel, "  ", archPanel)
+	bottomRow := lipgloss.JoinHorizontal(lipgloss.Top, taskPanel, "  ", sparklinePanel)
+	
+	content.WriteString(topRow)
+	content.WriteString("\n\n")
+	content.WriteString(bottomRow)
+	
+	return content.String()
+}
+
+// renderC2InfrastructurePanel shows active C2 servers with agent counts
+func (m model) renderC2InfrastructurePanel() string {
+	panelStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.theme.TacticalBorder).
+		Padding(1, 2).
+		Width(50).
+		Height(15)
+	
+	titleStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TacticalBorder).
+		Bold(true).
+		Underline(true)
+	
+	labelStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TacticalSection).
+		Bold(true)
+	
+	valueStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TacticalValue)
+	
+	mutedStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TacticalMuted)
+	
+	var lines []string
+	lines = append(lines, titleStyle.Render("🌐 C2 INFRASTRUCTURE MAP"))
+	lines = append(lines, "")
+	
+	// Group agents by C2 server
+	c2Servers := make(map[string][]Agent)
+	for _, agent := range m.agents {
+		c2 := agent.ActiveC2
+		if c2 == "" {
+			c2 = "Unknown"
+		}
+		c2Servers[c2] = append(c2Servers[c2], agent)
+	}
+	
+	if len(c2Servers) == 0 {
+		lines = append(lines, mutedStyle.Render("No C2 data available"))
+	} else {
+		for server, agents := range c2Servers {
+			lines = append(lines, labelStyle.Render(fmt.Sprintf("🌐 %s", server)))
+			
+			// Count protocols
+			protocols := make(map[string]int)
+			for _, agent := range agents {
+				protocols[agent.Transport]++
+			}
+			
+			// Show agent count
+			lines = append(lines, fmt.Sprintf("   %s %s",
+				valueStyle.Render(fmt.Sprintf("%d agents", len(agents))),
+				mutedStyle.Render("")))
+			
+			// Show protocol breakdown
+			var protoList []string
+			for proto, count := range protocols {
+				protoList = append(protoList, fmt.Sprintf("%s:%d", proto, count))
+			}
+			lines = append(lines, fmt.Sprintf("   └─ %s",
+				mutedStyle.Render(strings.Join(protoList, ", "))))
+			lines = append(lines, "")
+		}
+	}
+	
+	return panelStyle.Render(strings.Join(lines, "\n"))
+}
+
+// renderArchitecturePanel shows architecture distribution
+func (m model) renderArchitecturePanel() string {
+	panelStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.theme.TacticalBorder).
+		Padding(1, 2).
+		Width(50).
+		Height(15)
+	
+	titleStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TacticalBorder).
+		Bold(true).
+		Underline(true)
+	
+	labelStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TacticalSection)
+	
+	valueStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TacticalValue).
+		Bold(true)
+	
+	mutedStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TacticalMuted)
+	
+	var lines []string
+	lines = append(lines, titleStyle.Render("🔹 ARCHITECTURE DISTRIBUTION"))
+	lines = append(lines, "")
+	
+	// Count architectures
+	archCount := make(map[string]int)
+	totalAgents := len(m.agents)
+	
+	for _, agent := range m.agents {
+		arch := agent.Arch
+		if arch == "" {
+			arch = "unknown"
+		}
+		archCount[arch]++
+	}
+	
+	if totalAgents == 0 {
+		lines = append(lines, mutedStyle.Render("No agents available"))
+	} else {
+		// Sort by count (simple display)
+		for arch, count := range archCount {
+			percentage := float64(count) / float64(totalAgents) * 100
+			
+			// Create bar graph
+			barLength := int(percentage / 5) // 5% per block
+			if barLength > 20 {
+				barLength = 20
+			}
+			bar := strings.Repeat("█", barLength) + strings.Repeat("░", 20-barLength)
+			
+			// Icon based on arch
+			icon := "🔹"
+			if arch == "x86" || arch == "386" {
+				icon = "🔸"
+			} else if strings.Contains(arch, "arm") {
+				icon = "🔶"
+			}
+			
+			lines = append(lines, fmt.Sprintf("%s %s",
+				icon,
+				labelStyle.Render(fmt.Sprintf("%-10s", arch))))
+			lines = append(lines, fmt.Sprintf("  %s %s",
+				bar,
+				valueStyle.Render(fmt.Sprintf("%3.0f%% (%d)", percentage, count))))
+			lines = append(lines, "")
+		}
+	}
+	
+	return panelStyle.Render(strings.Join(lines, "\n"))
+}
+
+// renderTaskQueuePanel shows beacon task queue status
+func (m model) renderTaskQueuePanel() string {
+	panelStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.theme.TacticalBorder).
+		Padding(1, 2).
+		Width(50).
+		Height(15)
+	
+	titleStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TacticalBorder).
+		Bold(true).
+		Underline(true)
+	
+	labelStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TacticalSection)
+	
+	valueStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TacticalValue)
+	
+	mutedStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TacticalMuted)
+	
+	var lines []string
+	lines = append(lines, titleStyle.Render("📋 TASK QUEUE MONITOR"))
+	lines = append(lines, "")
+	
+	// Find beacons with tasks
+	beaconsWithTasks := 0
+	for _, agent := range m.agents {
+		if !agent.IsSession && agent.TasksCount > 0 {
+			beaconsWithTasks++
+			
+			// Show task progress
+			percentage := float64(0)
+			if agent.TasksCount > 0 {
+				percentage = float64(agent.TasksCompleted) / float64(agent.TasksCount) * 100
+			}
+			
+			barLength := int(percentage / 10) // 10% per block
+			if barLength > 10 {
+				barLength = 10
+			}
+			bar := strings.Repeat("█", barLength) + strings.Repeat("░", 10-barLength)
+			
+			// Status icon
+			statusIcon := "📋"
+			if percentage == 100 {
+				statusIcon = "✅"
+			} else if percentage < 30 {
+				statusIcon = "⚠️"
+			}
+			
+			lines = append(lines, fmt.Sprintf("%s %s",
+				statusIcon,
+				labelStyle.Render(fmt.Sprintf("%-15s", agent.Hostname[:min(15, len(agent.Hostname))]))))
+			lines = append(lines, fmt.Sprintf("  %s %s",
+				bar,
+				valueStyle.Render(fmt.Sprintf("%d/%d", agent.TasksCompleted, agent.TasksCount))))
+			
+			if beaconsWithTasks >= 5 {
+				break // Limit to 5 beacons for space
+			}
+		}
+	}
+	
+	if beaconsWithTasks == 0 {
+		lines = append(lines, mutedStyle.Render("No active beacon tasks"))
+		lines = append(lines, "")
+		lines = append(lines, mutedStyle.Render("All beacons are idle 💤"))
+	}
+	
+	return panelStyle.Render(strings.Join(lines, "\n"))
+}
+
+// renderSparklinePanel shows activity over time
+func (m model) renderSparklinePanel() string {
+	panelStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.theme.TacticalBorder).
+		Padding(1, 2).
+		Width(50).
+		Height(15)
+	
+	titleStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TacticalBorder).
+		Bold(true).
+		Underline(true)
+	
+	labelStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TacticalSection)
+	
+	valueStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TacticalValue)
+	
+	var lines []string
+	lines = append(lines, titleStyle.Render("📈 ACTIVITY METRICS"))
+	lines = append(lines, "")
+	
+	// Current snapshot (we'll use simple bars for now)
+	// In a real implementation, you'd track historical data
+	
+	sessionsCount := m.stats.Sessions
+	beaconsCount := m.stats.Beacons
+	deadCount := 0
+	newCount := 0
+	
+	for _, agent := range m.agents {
+		if agent.IsDead {
+			deadCount++
+		}
+		if agent.IsNew {
+			newCount++
+		}
+	}
+	
+	maxCount := max(max(sessionsCount, beaconsCount), max(deadCount, newCount))
+	if maxCount == 0 {
+		maxCount = 1
+	}
+	
+	// Sessions sparkline
+	sessionsBar := generateSparkline(sessionsCount, maxCount, 20)
+	lines = append(lines, labelStyle.Render("Sessions  "))
+	lines = append(lines, fmt.Sprintf("  %s %s",
+		sessionsBar,
+		valueStyle.Render(fmt.Sprintf("Current: %d", sessionsCount))))
+	lines = append(lines, "")
+	
+	// Beacons sparkline
+	beaconsBar := generateSparkline(beaconsCount, maxCount, 20)
+	lines = append(lines, labelStyle.Render("Beacons   "))
+	lines = append(lines, fmt.Sprintf("  %s %s",
+		beaconsBar,
+		valueStyle.Render(fmt.Sprintf("Current: %d", beaconsCount))))
+	lines = append(lines, "")
+	
+	// Dead sparkline
+	deadBar := generateSparkline(deadCount, maxCount, 20)
+	lines = append(lines, labelStyle.Render("Dead      "))
+	lines = append(lines, fmt.Sprintf("  %s %s",
+		deadBar,
+		valueStyle.Render(fmt.Sprintf("Current: %d", deadCount))))
+	lines = append(lines, "")
+	
+	// New sparkline
+	newBar := generateSparkline(newCount, maxCount, 20)
+	lines = append(lines, labelStyle.Render("New       "))
+	lines = append(lines, fmt.Sprintf("  %s %s",
+		newBar,
+		valueStyle.Render(fmt.Sprintf("Current: %d", newCount))))
+	
+	return panelStyle.Render(strings.Join(lines, "\n"))
+}
+
+// generateSparkline generates a simple bar graph
+func generateSparkline(value, maxValue, width int) string {
+	if maxValue == 0 {
+		return strings.Repeat("░", width)
+	}
+	
+	filled := int(float64(value) / float64(maxValue) * float64(width))
+	if filled > width {
+		filled = width
+	}
+	
+	return strings.Repeat("█", filled) + strings.Repeat("░", width-filled)
+}
+
+// min returns the minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// max returns the maximum of two integers
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
 // updateViewportContent updates the viewport with the current agent list
 func (m *model) updateViewportContent() {
+	// Check if we're in dashboard view
+	if m.view.Type == ViewTypeDashboard {
+		m.viewport.SetContent(m.renderDashboard())
+		return
+	}
+	
 	// Render agents to string
 	agentLines := m.renderAgents()
 	
