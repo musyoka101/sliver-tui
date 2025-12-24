@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -115,6 +116,41 @@ func (m *model) sampleCurrentActivity() {
 	)
 }
 
+// updateSubnetOrder builds ordered list of subnets for numbered shortcuts
+func (m *model) updateSubnetOrder() {
+	// Clear existing order
+	m.subnetOrder = []string{}
+	
+	// Build subnet map from active agents
+	subnetMap := make(map[string]bool)
+	for _, agent := range m.agents {
+		if agent.IsDead {
+			continue
+		}
+		
+		// Extract IP from RemoteAddress (format: "ip:port")
+		ip := agent.RemoteAddress
+		if idx := strings.Index(ip, ":"); idx != -1 {
+			ip = ip[:idx]
+		}
+		
+		// Extract subnet (x.x.x.0/24)
+		octets := strings.Split(ip, ".")
+		if len(octets) >= 3 {
+			subnet := fmt.Sprintf("%s.%s.%s.0/24", octets[0], octets[1], octets[2])
+			subnetMap[subnet] = true
+		}
+	}
+	
+	// Convert map to ordered slice
+	for subnet := range subnetMap {
+		m.subnetOrder = append(m.subnetOrder, subnet)
+	}
+	
+	// Sort alphabetically for consistent ordering
+	sort.Strings(m.subnetOrder)
+}
+
 // Agent represents a Sliver agent
 type Agent struct {
 	ID            string
@@ -174,6 +210,7 @@ type model struct {
 	view            View // Current view
 	activityTracker *ActivityTracker // Activity tracking over time
 	expandedSubnets map[string]bool  // Track which subnets are expanded
+	subnetOrder     []string         // Track subnet display order for numbered shortcuts
 }
 
 func (m model) Init() tea.Cmd {
@@ -270,6 +307,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		
+		// Toggle individual subnet by number (1-9)
+		case "1", "2", "3", "4", "5", "6", "7", "8", "9":
+			if m.viewIndex == 2 { // Dashboard view only
+				subnetNum := int(msg.String()[0] - '0') - 1 // Convert '1' to 0, '2' to 1, etc.
+				if subnetNum >= 0 && subnetNum < len(m.subnetOrder) {
+					subnet := m.subnetOrder[subnetNum]
+					// Toggle this specific subnet
+					m.expandedSubnets[subnet] = !m.expandedSubnets[subnet]
+					
+					// Update viewport
+					if m.ready {
+						m.updateViewportContent()
+					}
+				}
+			}
+			return m, nil
+		
 		// Viewport scrolling controls
 		case "up", "k":
 			m.viewport, cmd = m.viewport.Update(msg)
@@ -334,6 +388,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		
 		// Sample activity immediately when agents are fetched
 		m.sampleCurrentActivity()
+		
+		// Update subnet order for numbered shortcuts
+		m.updateSubnetOrder()
 		
 		// Update viewport content with new agent list
 		if m.ready {
@@ -469,7 +526,7 @@ func (m model) View() string {
 	
 	footerLines = append(footerLines, "")
 	helpStyle := lipgloss.NewStyle().Foreground(m.theme.HelpColor)
-	helpText := "  Press 'r' to refresh  │  't' to change theme  │  'v' to change view  │  'd' for dashboard  │  'e' to expand subnets  │  '↑↓' or 'j/k' to scroll  │  'q' to quit"
+	helpText := "  Press 'r' to refresh  │  't' to change theme  │  'v' to change view  │  'd' for dashboard  │  '1-9' subnet expand  │  'e' expand all  │  '↑↓' or 'j/k' to scroll  │  'q' to quit"
 	footerLines = append(footerLines, helpStyle.Render(helpText))
 	footerLines = append(footerLines, "")
 	
@@ -1023,7 +1080,7 @@ func (m model) renderNetworkTopologyPanel() string {
 	
 	var lines []string
 	lines = append(lines, titleStyle.Render("🌍 NETWORK TOPOLOGY"))
-	lines = append(lines, mutedStyle.Render("(click subnet to expand)"))
+	lines = append(lines, mutedStyle.Render("(press number or 'e' to expand)"))
 	lines = append(lines, "")
 	
 	// Group agents by subnet (first 3 octets) with deduplication by hostname
@@ -1069,6 +1126,9 @@ func (m model) renderNetworkTopologyPanel() string {
 	if totalSubnets == 0 {
 		lines = append(lines, mutedStyle.Render("No network data available"))
 	} else {
+		// Use pre-built subnet order from model for numbered shortcuts
+		// This ensures consistent numbering across renders
+		
 		// Show total subnets
 		lines = append(lines, fmt.Sprintf("%s %s",
 			labelStyle.Render("Networks:"),
@@ -1077,10 +1137,16 @@ func (m model) renderNetworkTopologyPanel() string {
 		
 		// Show each subnet (limit to top 2 for space)
 		count := 0
-		for subnet, hosts := range subnetHosts {
+		for subnetIdx, subnet := range m.subnetOrder {
 			if count >= 2 {
 				lines = append(lines, mutedStyle.Render(fmt.Sprintf("... and %d more subnet(s)", totalSubnets-2)))
 				break
+			}
+			
+			// Skip if this subnet doesn't have hosts (shouldn't happen, but safety check)
+			hosts, exists := subnetHosts[subnet]
+			if !exists {
+				continue
 			}
 			
 			// Convert map to slice for iteration
@@ -1117,8 +1183,10 @@ func (m model) renderNetworkTopologyPanel() string {
 				expandIcon = "▼"
 			}
 			
-			// Show subnet header (clickable)
-			lines = append(lines, fmt.Sprintf("%s %s %s",
+			// Show subnet header with number (clickable)
+			subnetNum := subnetIdx + 1
+			lines = append(lines, fmt.Sprintf("%s %s %s %s",
+				clickableStyle.Render(fmt.Sprintf("[%d]", subnetNum)),
 				clickableStyle.Render(expandIcon),
 				icon,
 				labelStyle.Render(subnet)))
