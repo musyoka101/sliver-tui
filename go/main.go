@@ -729,17 +729,17 @@ func (m model) renderDashboard() string {
 	content.WriteString("\n\n")
 	
 	// Create 2x3 grid layout for panels
-	// Top row: C2 Infrastructure | Architecture Distribution | Task Queue Monitor
-	// Bottom row: Security Status | Activity Metrics | (future expansion)
+	// Top row: C2 Infrastructure | OS & Privilege Matrix | Network Topology
+	// Bottom row: Security Status | Activity Metrics
 	
 	c2Panel := m.renderC2InfrastructurePanel()
 	archPanel := m.renderArchitecturePanel()
-	taskPanel := m.renderTaskQueuePanel()
+	networkPanel := m.renderNetworkTopologyPanel()
 	securityPanel := m.renderSecurityStatusPanel()
 	sparklinePanel := m.renderSparklinePanel()
 	
 	// Use lipgloss JoinHorizontal to place panels side by side
-	topRow := lipgloss.JoinHorizontal(lipgloss.Top, c2Panel, "  ", archPanel, "  ", taskPanel)
+	topRow := lipgloss.JoinHorizontal(lipgloss.Top, c2Panel, "  ", archPanel, "  ", networkPanel)
 	bottomRow := lipgloss.JoinHorizontal(lipgloss.Top, securityPanel, "  ", sparklinePanel)
 	
 	content.WriteString(topRow)
@@ -818,7 +818,7 @@ func (m model) renderC2InfrastructurePanel() string {
 	return panelStyle.Render(strings.Join(lines, "\n"))
 }
 
-// renderArchitecturePanel shows architecture distribution
+// renderArchitecturePanel shows OS/architecture distribution with privilege breakdown
 func (m model) renderArchitecturePanel() string {
 	panelStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -842,55 +842,222 @@ func (m model) renderArchitecturePanel() string {
 	mutedStyle := lipgloss.NewStyle().
 		Foreground(m.theme.TacticalMuted)
 	
-	// Cyan bar style for architecture
-	barStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#00CED1")) // Dark turquoise
+	// Privilege color styles
+	privStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#50fa7b")) // Green for privileged
+	
+	userStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#f1fa8c")) // Yellow for user-level
 	
 	var lines []string
-	lines = append(lines, titleStyle.Render("🔹 ARCHITECTURE DISTRIBUTION"))
+	lines = append(lines, titleStyle.Render("💻 OS & PRIVILEGE MATRIX"))
 	lines = append(lines, "")
 	
-	// Count architectures
-	archCount := make(map[string]int)
+	// Group by OS + Architecture
+	type OSArch struct {
+		OS   string
+		Arch string
+	}
+	
+	osArchData := make(map[OSArch]struct {
+		privileged int
+		user       int
+	})
+	
 	totalAgents := len(m.agents)
 	
 	for _, agent := range m.agents {
+		if agent.IsDead {
+			continue // Skip dead agents
+		}
+		
+		os := agent.OS
+		if os == "" {
+			os = "unknown"
+		}
 		arch := agent.Arch
 		if arch == "" {
 			arch = "unknown"
 		}
-		archCount[arch]++
+		
+		key := OSArch{OS: os, Arch: arch}
+		data := osArchData[key]
+		
+		if agent.IsPrivileged {
+			data.privileged++
+		} else {
+			data.user++
+		}
+		osArchData[key] = data
 	}
 	
 	if totalAgents == 0 {
 		lines = append(lines, mutedStyle.Render("No agents available"))
 	} else {
-		// Sort by count (simple display)
-		for arch, count := range archCount {
-			percentage := float64(count) / float64(totalAgents) * 100
+		// Display each OS/Arch combination
+		for osArch, data := range osArchData {
 			
-			// Create bar graph
-			barLength := int(percentage / 5) // 5% per block
-			if barLength > 20 {
-				barLength = 20
+			// OS icon
+			icon := "🖥️"
+			osName := osArch.OS
+			if strings.Contains(strings.ToLower(osName), "linux") {
+				icon = "🐧"
+			} else if strings.Contains(strings.ToLower(osName), "darwin") || strings.Contains(strings.ToLower(osName), "mac") {
+				icon = "🍎"
 			}
-			bar := strings.Repeat("█", barLength) + strings.Repeat("░", 20-barLength)
 			
-			// Icon based on arch
-			icon := "🔹"
-			if arch == "x86" || arch == "386" {
-				icon = "🔸"
-			} else if strings.Contains(arch, "arm") {
-				icon = "🔶"
+			// Show OS + Arch
+			lines = append(lines, fmt.Sprintf("%s %s (%s)",
+				icon,
+				labelStyle.Render(osName),
+				mutedStyle.Render(osArch.Arch)))
+			
+			// Show privilege breakdown with mini bars
+			if data.privileged > 0 {
+				privBar := strings.Repeat("█", min(data.privileged*2, 8))
+				lines = append(lines, fmt.Sprintf("   %s %s",
+					privStyle.Render(fmt.Sprintf("💎 %-8s", privBar)),
+					valueStyle.Render(fmt.Sprintf("%d priv", data.privileged))))
+			}
+			
+			if data.user > 0 {
+				userBar := strings.Repeat("█", min(data.user*2, 8))
+				lines = append(lines, fmt.Sprintf("   %s %s",
+					userStyle.Render(fmt.Sprintf("👤 %-8s", userBar)),
+					mutedStyle.Render(fmt.Sprintf("%d user", data.user))))
+			}
+			
+			lines = append(lines, "")
+		}
+	}
+	
+	return panelStyle.Render(strings.Join(lines, "\n"))
+}
+
+// renderNetworkTopologyPanel shows subnet/IP-based location tracking
+func (m model) renderNetworkTopologyPanel() string {
+	panelStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.theme.TacticalBorder).
+		Padding(1, 2).
+		Width(38).
+		Height(15)
+	
+	titleStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TacticalBorder).
+		Bold(true).
+		Underline(true)
+	
+	labelStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TacticalSection)
+	
+	valueStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TacticalValue).
+		Bold(true)
+	
+	mutedStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TacticalMuted)
+	
+	// Cyan bar style for subnet visualization
+	barStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#00CED1")) // Dark turquoise
+	
+	var lines []string
+	lines = append(lines, titleStyle.Render("🌍 NETWORK TOPOLOGY"))
+	lines = append(lines, "")
+	
+	// Group agents by subnet (first 3 octets)
+	subnetAgents := make(map[string][]Agent)
+	pivotCount := 0
+	
+	for _, agent := range m.agents {
+		if agent.IsDead {
+			continue
+		}
+		
+		// Extract subnet from RemoteAddress (format: IP:Port)
+		ip := agent.RemoteAddress
+		if idx := strings.Index(ip, ":"); idx != -1 {
+			ip = ip[:idx] // Remove port
+		}
+		
+		// Get subnet (first 3 octets)
+		octets := strings.Split(ip, ".")
+		subnet := "unknown"
+		if len(octets) >= 3 {
+			subnet = fmt.Sprintf("%s.%s.%s.0/24", octets[0], octets[1], octets[2])
+		}
+		
+		subnetAgents[subnet] = append(subnetAgents[subnet], agent)
+		
+		// Count pivots (agents with parent)
+		if agent.ParentID != "" {
+			pivotCount++
+		}
+	}
+	
+	totalSubnets := len(subnetAgents)
+	
+	if totalSubnets == 0 {
+		lines = append(lines, mutedStyle.Render("No network data available"))
+	} else {
+		// Show total subnets
+		lines = append(lines, fmt.Sprintf("%s %s",
+			labelStyle.Render("Networks:"),
+			valueStyle.Render(fmt.Sprintf("%d subnet(s)", totalSubnets))))
+		lines = append(lines, "")
+		
+		// Show each subnet (limit to top 3)
+		count := 0
+		for subnet, agents := range subnetAgents {
+			if count >= 3 {
+				lines = append(lines, mutedStyle.Render(fmt.Sprintf("... and %d more", totalSubnets-3)))
+				break
+			}
+			
+			// Count privileged agents in this subnet
+			privCount := 0
+			for _, agent := range agents {
+				if agent.IsPrivileged {
+					privCount++
+				}
+			}
+			
+			// Create mini bar for this subnet
+			barLength := len(agents)
+			if barLength > 10 {
+				barLength = 10
+			}
+			bar := strings.Repeat("█", barLength)
+			
+			// Subnet icon
+			icon := "📡"
+			if strings.HasPrefix(subnet, "10.") || strings.HasPrefix(subnet, "192.168.") || strings.HasPrefix(subnet, "172.") {
+				icon = "🏢" // Internal network
 			}
 			
 			lines = append(lines, fmt.Sprintf("%s %s",
 				icon,
-				labelStyle.Render(fmt.Sprintf("%-10s", arch))))
-			lines = append(lines, fmt.Sprintf("  %s %s",
+				labelStyle.Render(subnet)))
+			lines = append(lines, fmt.Sprintf("   %s %s",
 				barStyle.Render(bar),
-				valueStyle.Render(fmt.Sprintf("%3.0f%% (%d)", percentage, count))))
+				valueStyle.Render(fmt.Sprintf("%d host(s)", len(agents)))))
+			
+			// Show privilege info if any
+			if privCount > 0 {
+				lines = append(lines, fmt.Sprintf("   └─ %s",
+					mutedStyle.Render(fmt.Sprintf("💎 %d privileged", privCount))))
+			}
+			
 			lines = append(lines, "")
+			count++
+		}
+		
+		// Show pivot chains if any
+		if pivotCount > 0 {
+			lines = append(lines, fmt.Sprintf("%s %s",
+				labelStyle.Render("Pivot Chains:"),
+				valueStyle.Render(fmt.Sprintf("%d", pivotCount))))
 		}
 	}
 	
