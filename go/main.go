@@ -603,8 +603,9 @@ func (m model) renderAgents() []string {
 	tree := buildAgentTree(m.agents)
 
 	// Render tree with indentation using current view
-	for _, agent := range tree {
-		lines = append(lines, m.renderAgentTreeWithView(agent, 0, m.view.Type)...)
+	for i, agent := range tree {
+		hasNext := i < len(tree)-1
+		lines = append(lines, m.renderAgentTreeWithViewAndContext(agent, 0, m.view.Type, hasNext, !hasNext)...)
 	}
 
 	return lines

@@ -119,14 +119,8 @@ func (m model) renderAgentBox(agent Agent) []string {
 		lipgloss.NewStyle().Foreground(m.theme.TacticalValue).Render(agent.Transport),
 	)
 
-	// Calculate box width based on content
-	userInfoWidth := lipgloss.Width(userInfo)
-	detailsInfoWidth := lipgloss.Width(detailsInfo)
-	boxContentWidth := userInfoWidth
-	if detailsInfoWidth > boxContentWidth {
-		boxContentWidth = detailsInfoWidth
-	}
-	boxContentWidth += 2 // Add padding
+	// Combine both lines
+	content := userInfo + "\n" + detailsInfo
 
 	// Border color
 	borderColor := m.theme.TacticalBorder
@@ -134,29 +128,28 @@ func (m model) renderAgentBox(agent Agent) []string {
 		borderColor = m.theme.DeadColor
 	}
 
-	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
+	// Use lipgloss border style for proper continuous borders
+	boxStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(borderColor).
+		Padding(0, 1)
 
-	// Build box lines
-	topBorder := borderStyle.Render("╭" + strings.Repeat("─", boxContentWidth) + "╮")
-	bottomBorder := borderStyle.Render("╰" + strings.Repeat("─", boxContentWidth) + "╯")
-
-	// Pad content lines to fit box width
-	userInfoPadded := userInfo + strings.Repeat(" ", boxContentWidth-userInfoWidth)
-	detailsInfoPadded := detailsInfo + strings.Repeat(" ", boxContentWidth-detailsInfoWidth)
-
-	line1 := borderStyle.Render("│") + " " + userInfoPadded + borderStyle.Render("│")
-	line2 := borderStyle.Render("│") + " " + detailsInfoPadded + borderStyle.Render("│")
-
-	lines = append(lines, topBorder)
-	lines = append(lines, line1)
-	lines = append(lines, line2)
-	lines = append(lines, bottomBorder)
+	// Render the box
+	boxed := boxStyle.Render(content)
+	
+	// Split into lines for return
+	lines = strings.Split(boxed, "\n")
 
 	return lines
 }
 
 // renderAgentTreeWithView renders agent tree with view-specific formatting
 func (m model) renderAgentTreeWithView(agent Agent, depth int, viewType ViewType) []string {
+	return m.renderAgentTreeWithViewAndContext(agent, depth, viewType, false, false)
+}
+
+// renderAgentTreeWithViewAndContext renders agent tree with context about siblings
+func (m model) renderAgentTreeWithViewAndContext(agent Agent, depth int, viewType ViewType, hasNextSibling bool, isLastChild bool) []string {
 	var lines []string
 
 	// Render current agent based on view type
@@ -201,18 +194,15 @@ func (m model) renderAgentTreeWithView(agent Agent, depth int, viewType ViewType
 		lines = append(lines, agentLines...)
 	}
 
-	// Add spacing between agents at root level
-	if depth == 0 && len(agent.Children) == 0 {
-		if viewType == ViewTypeBox {
-			lines = append(lines, "") // Extra spacing for box view
-		} else {
-			lines = append(lines, "")
-		}
+	// Add spacing between agents at root level (only for Tree view)
+	if depth == 0 && len(agent.Children) == 0 && viewType == ViewTypeTree {
+		lines = append(lines, "")
 	}
 
 	// Recursively render children
-	for _, child := range agent.Children {
-		childLines := m.renderAgentTreeWithView(child, depth+1, viewType)
+	for i, child := range agent.Children {
+		hasNext := i < len(agent.Children)-1
+		childLines := m.renderAgentTreeWithViewAndContext(child, depth+1, viewType, hasNext, !hasNext)
 		lines = append(lines, childLines...)
 	}
 
