@@ -703,12 +703,13 @@ func (m model) renderAgentTree(agent Agent, depth int) []string {
 func (m model) renderAgentLine(agent Agent) []string {
 	var lines []string
 	
-	// Status icon
+	// Status icon (only for live agents)
 	var statusIcon string
 	var statusColor lipgloss.Color
 	
 	if agent.IsDead {
-		statusIcon = "💀"
+		// For dead agents, use beacon icon but with dead color
+		statusIcon = "◇"
 		statusColor = m.theme.DeadColor
 	} else if agent.IsSession {
 		statusIcon = "◆"
@@ -776,6 +777,12 @@ func (m model) renderAgentLine(agent Agent) []string {
 		privBadge = " 💎"
 	}
 
+	// Dead badge (shown after hostname)
+	deadBadge := ""
+	if agent.IsDead {
+		deadBadge = " 💀"
+	}
+
 	// Type label
 	typeLabel := "beacon"
 	if agent.IsSession {
@@ -786,12 +793,13 @@ func (m model) renderAgentLine(agent Agent) []string {
 
 	// Build first line - connector from left with protocol box integrated
 	connectorStyle := lipgloss.NewStyle().Foreground(connectorColor)
-	line1 := fmt.Sprintf("[ %s ]%s▶ %s %s  %s%s",
+	line1 := fmt.Sprintf("[ %s ]%s▶ %s %s  %s%s%s",
 		lipgloss.NewStyle().Foreground(protocolColor).Bold(true).Render(strings.ToUpper(agent.Transport)),
 		connectorStyle.Render("──────────"),
 		lipgloss.NewStyle().Foreground(statusColor).Render(statusIcon),
 		osIcon,
 		lipgloss.NewStyle().Foreground(usernameColor).Bold(true).Render(fmt.Sprintf("%s@%s", agent.Username, agent.Hostname)),
+		deadBadge,
 		privBadge,
 	)
 
