@@ -181,21 +181,21 @@ func (m model) renderAgentTreeWithViewAndContext(agent Agent, depth int, viewTyp
 				if i == middleLine {
 					// Middle line: add T-junction with arrow pointing right
 					if !isLastChild {
-						connector := lipgloss.NewStyle().Foreground(connectorColor).Render("├───▶ ")
+						connector := lipgloss.NewStyle().Foreground(connectorColor).Render("├──────────────▶ ")
 						lines = append(lines, connector+boxLine)
 					} else {
 						// Last box: use corner
-						connector := lipgloss.NewStyle().Foreground(connectorColor).Render("╰───▶ ")
+						connector := lipgloss.NewStyle().Foreground(connectorColor).Render("╰──────────────▶ ")
 						lines = append(lines, connector+boxLine)
 					}
 				} else {
 					// Other lines: just vertical line or spaces
 					if !isLastChild || i < middleLine {
-						vline := lipgloss.NewStyle().Foreground(connectorColor).Render("│     ")
+						vline := lipgloss.NewStyle().Foreground(connectorColor).Render("│                ")
 						lines = append(lines, vline+boxLine)
 					} else {
 						// After the corner on last box, use spaces
-						lines = append(lines, "      "+boxLine)
+						lines = append(lines, "                 "+boxLine)
 					}
 				}
 			}

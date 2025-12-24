@@ -595,22 +595,23 @@ func (m *model) updateViewportContent() {
 			contentLines = append(contentLines, "  "+logoLine+"    "+agentLine)
 		}
 	} else {
-		// Box view: Logo at top, then vertical line connecting to boxes
+		// Box view: Logo at top with vertical line starting from bottom center
 		connectorColor := m.theme.TacticalBorder
 		
-		// Render logo with proper indentation
+		// Render logo with padding
 		for _, logoLine := range logo {
-			contentLines = append(contentLines, logoStyle.Render(logoLine))
+			contentLines = append(contentLines, "  "+logoStyle.Render(logoLine))
 		}
 		
-		// Add vertical line from logo down to first box
-		// The vertical line should align with the left edge where boxes connect
-		contentLines = append(contentLines, lipgloss.NewStyle().Foreground(connectorColor).Render("│"))
-		contentLines = append(contentLines, lipgloss.NewStyle().Foreground(connectorColor).Render("│"))
+		// Start vertical line from center-bottom of logo (approx column 6-7)
+		vlinePrefix := "      " // 6 spaces to position line under logo center
+		contentLines = append(contentLines, vlinePrefix+lipgloss.NewStyle().Foreground(connectorColor).Render("│"))
+		contentLines = append(contentLines, vlinePrefix+lipgloss.NewStyle().Foreground(connectorColor).Render("│"))
 		
 		// Add boxes with arrows pointing from the vertical line
+		// Need to add prefix to boxes to align with the vertical line
 		for _, agentLine := range agentLines {
-			contentLines = append(contentLines, agentLine)
+			contentLines = append(contentLines, vlinePrefix+agentLine)
 		}
 	}
 	
