@@ -793,9 +793,10 @@ func (m model) renderAgentLine(agent Agent) []string {
 
 	// Build first line - connector from left with protocol box integrated
 	connectorStyle := lipgloss.NewStyle().Foreground(connectorColor)
-	line1 := fmt.Sprintf("[ %s ]%s▶ %s %s  %s%s%s",
+	line1 := fmt.Sprintf("%s[ %s ]%s▶ %s %s  %s%s%s",
+		connectorStyle.Render("╰────────"),
 		lipgloss.NewStyle().Foreground(protocolColor).Bold(true).Render(strings.ToUpper(agent.Transport)),
-		connectorStyle.Render("──────────"),
+		connectorStyle.Render("────────"),
 		lipgloss.NewStyle().Foreground(statusColor).Render(statusIcon),
 		osIcon,
 		lipgloss.NewStyle().Foreground(usernameColor).Bold(true).Render(fmt.Sprintf("%s@%s", agent.Username, agent.Hostname)),
