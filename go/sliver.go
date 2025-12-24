@@ -206,11 +206,16 @@ func ConvertToAgents(sessions []*clientpb.Session, beacons []*clientpb.Beacon) (
 	for _, b := range beacons {
 		// Calculate if beacon is dead based on last check-in time
 		// A beacon is considered dead if it hasn't checked in for 3x its interval
+		// Note: b.Interval is in nanoseconds (time.Duration)
 		isDead := b.IsDead
+		
 		if !isDead && b.LastCheckin > 0 && b.Interval > 0 {
 			lastCheckin := time.Unix(b.LastCheckin, 0)
-			deadThreshold := time.Duration(b.Interval*3) * time.Second
-			if time.Since(lastCheckin) > deadThreshold {
+			// Interval is already a time.Duration in nanoseconds, don't multiply by time.Second
+			deadThreshold := time.Duration(b.Interval * 3)
+			timeSinceCheckin := time.Since(lastCheckin)
+			
+			if timeSinceCheckin > deadThreshold {
 				isDead = true
 			}
 		}
