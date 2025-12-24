@@ -756,7 +756,7 @@ func (m model) renderC2InfrastructurePanel() string {
 		BorderForeground(m.theme.TacticalBorder).
 		Padding(1, 2).
 		Width(38).
-		Height(15)
+		Height(18)
 	
 	titleStyle := lipgloss.NewStyle().
 		Foreground(m.theme.TacticalBorder).
@@ -825,7 +825,7 @@ func (m model) renderArchitecturePanel() string {
 		BorderForeground(m.theme.TacticalBorder).
 		Padding(1, 2).
 		Width(38).
-		Height(15)
+		Height(18)
 	
 	titleStyle := lipgloss.NewStyle().
 		Foreground(m.theme.TacticalBorder).
@@ -941,7 +941,7 @@ func (m model) renderNetworkTopologyPanel() string {
 		BorderForeground(m.theme.TacticalBorder).
 		Padding(1, 2).
 		Width(38).
-		Height(15)
+		Height(18)
 	
 	titleStyle := lipgloss.NewStyle().
 		Foreground(m.theme.TacticalBorder).
@@ -1007,11 +1007,11 @@ func (m model) renderNetworkTopologyPanel() string {
 			valueStyle.Render(fmt.Sprintf("%d subnet(s)", totalSubnets))))
 		lines = append(lines, "")
 		
-		// Show each subnet (limit to top 3)
+		// Show each subnet (limit to top 2 for space)
 		count := 0
 		for subnet, agents := range subnetAgents {
-			if count >= 3 {
-				lines = append(lines, mutedStyle.Render(fmt.Sprintf("... and %d more", totalSubnets-3)))
+			if count >= 2 {
+				lines = append(lines, mutedStyle.Render(fmt.Sprintf("... and %d more subnet(s)", totalSubnets-2)))
 				break
 			}
 			
@@ -1043,10 +1043,42 @@ func (m model) renderNetworkTopologyPanel() string {
 				barStyle.Render(bar),
 				valueStyle.Render(fmt.Sprintf("%d host(s)", len(agents)))))
 			
-			// Show privilege info if any
-			if privCount > 0 {
-				lines = append(lines, fmt.Sprintf("   └─ %s",
-					mutedStyle.Render(fmt.Sprintf("💎 %d privileged", privCount))))
+			// Show individual hostnames (limit to 3 hosts per subnet)
+			hostCount := 0
+			for _, agent := range agents {
+				if hostCount >= 3 {
+					remaining := len(agents) - 3
+					if remaining > 0 {
+						lines = append(lines, fmt.Sprintf("      %s",
+							mutedStyle.Render(fmt.Sprintf("... +%d more", remaining))))
+					}
+					break
+				}
+				
+				// Host icon based on privilege
+				hostIcon := "├─"
+				if hostCount == len(agents)-1 || hostCount == 2 {
+					hostIcon = "└─"
+				}
+				
+				// Privilege indicator
+				privIcon := "👤"
+				if agent.IsPrivileged {
+					privIcon = "💎"
+				}
+				
+				// Truncate hostname if too long
+				hostname := agent.Hostname
+				if len(hostname) > 18 {
+					hostname = hostname[:15] + "..."
+				}
+				
+				lines = append(lines, fmt.Sprintf("      %s %s %s",
+					mutedStyle.Render(hostIcon),
+					privIcon,
+					labelStyle.Render(hostname)))
+				
+				hostCount++
 			}
 			
 			lines = append(lines, "")
@@ -1150,7 +1182,7 @@ func (m model) renderSecurityStatusPanel() string {
 		BorderForeground(m.theme.TacticalBorder).
 		Padding(1, 2).
 		Width(38).
-		Height(15)
+		Height(18)
 	
 	titleStyle := lipgloss.NewStyle().
 		Foreground(m.theme.TacticalBorder).
