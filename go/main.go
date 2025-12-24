@@ -63,6 +63,8 @@ type model struct {
 	ready        bool // Viewport initialized
 	themeIndex   int  // Current theme index
 	theme        Theme // Current theme
+	viewIndex    int  // Current view index
+	view         View // Current view
 }
 
 func (m model) Init() tea.Cmd {
@@ -90,6 +92,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.themeIndex = (m.themeIndex + 1) % GetThemeCount()
 			m.theme = GetTheme(m.themeIndex)
 			// Update viewport content with new theme
+			if m.ready {
+				m.updateViewportContent()
+			}
+			return m, nil
+		
+		// View switching
+		case "v":
+			m.viewIndex = (m.viewIndex + 1) % GetViewCount()
+			m.view = GetView(m.viewIndex)
+			// Update viewport content with new view
 			if m.ready {
 				m.updateViewportContent()
 			}
@@ -185,7 +197,7 @@ func (m model) View() string {
 	if m.termWidth > 0 && m.termHeight > 0 {
 		statusText += fmt.Sprintf("  │  Term: %dx%d", m.termWidth, m.termHeight)
 	}
-	statusText += fmt.Sprintf("  │  Theme: %s", m.theme.Name)
+	statusText += fmt.Sprintf("  │  Theme: %s  │  View: %s", m.theme.Name, m.view.Name)
 	headerLines = append(headerLines, statusStyle.Render(statusText))
 	headerLines = append(headerLines, "")
 	
@@ -250,7 +262,7 @@ func (m model) View() string {
 	
 	footerLines = append(footerLines, "")
 	helpStyle := lipgloss.NewStyle().Foreground(m.theme.HelpColor)
-	helpText := "  Press 'r' to refresh  │  't' to change theme  │  '↑↓' or 'j/k' to scroll  │  'q' to quit"
+	helpText := "  Press 'r' to refresh  │  't' to change theme  │  'v' to change view  │  '↑↓' or 'j/k' to scroll  │  'q' to quit"
 	footerLines = append(footerLines, helpStyle.Render(helpText))
 	footerLines = append(footerLines, "")
 	
@@ -590,9 +602,9 @@ func (m model) renderAgents() []string {
 	// Build hierarchical tree
 	tree := buildAgentTree(m.agents)
 
-	// Render tree with indentation
+	// Render tree with indentation using current view
 	for _, agent := range tree {
-		lines = append(lines, m.renderAgentTree(agent, 0)...)
+		lines = append(lines, m.renderAgentTreeWithView(agent, 0, m.view.Type)...)
 	}
 
 	return lines
@@ -897,6 +909,9 @@ func main() {
 	// Initialize with default theme (index 0)
 	defaultTheme := GetTheme(0)
 	s.Style = lipgloss.NewStyle().Foreground(defaultTheme.TitleColor)
+	
+	// Initialize with default view (index 0)
+	defaultView := GetView(0)
 
 	// Initialize model with default terminal size as fallback
 	m := model{
@@ -907,6 +922,8 @@ func main() {
 		termHeight: 40,  // Default fallback height
 		themeIndex: 0,   // Start with default theme
 		theme:      defaultTheme,
+		viewIndex:  0,   // Start with default view
+		view:       defaultView,
 	}
 
 	// Create and run program with alt screen
