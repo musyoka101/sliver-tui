@@ -23,36 +23,6 @@ var (
 	lostAgentTimeout = 5 * time.Minute
 )
 
-// Styles
-var (
-	titleStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("#00d7ff"))
-
-	logoStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#d75fff")).
-			Bold(true)
-
-	statusStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#888888")).
-			Italic(true).
-			MarginBottom(1)
-
-	helpStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#626262"))
-
-	separatorStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#444444"))
-
-	statsStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#00d7ff")).
-			Bold(true).
-			Padding(0, 1)
-
-	agentLineStyle = lipgloss.NewStyle().
-			PaddingLeft(2)
-)
-
 // Agent represents a Sliver agent
 type Agent struct {
 	ID            string
@@ -88,9 +58,11 @@ type model struct {
 	loading      bool
 	err          error
 	lastUpdate   time.Time
-	termWidth    int // Terminal width for responsive layout
-	termHeight   int // Terminal height
+	termWidth    int  // Terminal width for responsive layout
+	termHeight   int  // Terminal height
 	ready        bool // Viewport initialized
+	themeIndex   int  // Current theme index
+	theme        Theme // Current theme
 }
 
 func (m model) Init() tea.Cmd {
@@ -112,6 +84,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "r":
 			m.loading = true
 			return m, fetchAgentsCmd
+		
+		// Theme switching
+		case "t":
+			m.themeIndex = (m.themeIndex + 1) % GetThemeCount()
+			m.theme = GetTheme(m.themeIndex)
+			// Update viewport content with new theme
+			if m.ready {
+				m.updateViewportContent()
+			}
+			return m, nil
 		
 		// Viewport scrolling controls
 		case "up", "k":
@@ -190,9 +172,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) View() string {
 	// Build header (title + status) - this is FIXED at top, not scrollable
 	var headerLines []string
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(m.theme.TitleColor)
 	title := titleStyle.Render("🎯 Sliver C2 Network Topology")
 	headerLines = append(headerLines, title)
 	
+	statusStyle := lipgloss.NewStyle().Foreground(m.theme.StatusColor).Italic(true).MarginBottom(1)
 	statusText := fmt.Sprintf("Last Update: %s", m.lastUpdate.Format("15:04:05"))
 	if m.ready && len(m.agents) > 0 {
 		scrollPercent := int(m.viewport.ScrollPercent() * 100)
@@ -201,6 +185,7 @@ func (m model) View() string {
 	if m.termWidth > 0 && m.termHeight > 0 {
 		statusText += fmt.Sprintf("  │  Term: %dx%d", m.termWidth, m.termHeight)
 	}
+	statusText += fmt.Sprintf("  │  Theme: %s", m.theme.Name)
 	headerLines = append(headerLines, statusStyle.Render(statusText))
 	headerLines = append(headerLines, "")
 	
@@ -222,6 +207,7 @@ func (m model) View() string {
 			"  ▀██████▀  ",
 			"    ▀██▀    ",
 		}
+		logoStyle := lipgloss.NewStyle().Foreground(m.theme.LogoColor).Bold(true)
 		logoStart := len(agentLines)/2 - len(logo)/2
 		if logoStart < 0 {
 			logoStart = 0
@@ -240,9 +226,11 @@ func (m model) View() string {
 	// Build footer (stats + help)
 	var footerLines []string
 	footerLines = append(footerLines, "")
+	separatorStyle := lipgloss.NewStyle().Foreground(m.theme.SeparatorColor)
 	footerLines = append(footerLines, separatorStyle.Render(strings.Repeat("─", 90)))
 	footerLines = append(footerLines, "")
 	
+	statsStyle := lipgloss.NewStyle().Foreground(m.theme.StatsColor).Bold(true).Padding(0, 1)
 	statsLine := fmt.Sprintf("🟢 Sessions: %d  │  🟡 Beacons: %d  │  🔵 Total: %d",
 		m.stats.Sessions, m.stats.Beacons, m.stats.Compromised)
 	footerLines = append(footerLines, statsStyle.Render(statsLine))
@@ -261,7 +249,8 @@ func (m model) View() string {
 	}
 	
 	footerLines = append(footerLines, "")
-	helpText := "  Press 'r' to refresh  │  '↑↓' or 'j/k' to scroll  │  'q' to quit"
+	helpStyle := lipgloss.NewStyle().Foreground(m.theme.HelpColor)
+	helpText := "  Press 'r' to refresh  │  't' to change theme  │  '↑↓' or 'j/k' to scroll  │  'q' to quit"
 	footerLines = append(footerLines, helpStyle.Render(helpText))
 	footerLines = append(footerLines, "")
 	
@@ -368,25 +357,25 @@ func (m model) renderTacticalPanel() string {
 
 	panelStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("#00d7ff")).
+		BorderForeground(m.theme.TacticalBorder).
 		Padding(1, 2).
 		Width(35)
 
 	headerStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#00d7ff")).
+		Foreground(m.theme.TacticalBorder).
 		Bold(true).
 		Underline(true)
 
 	sectionStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#f1fa8c")).
+		Foreground(m.theme.TacticalSection).
 		Bold(true)
 		// Removed MarginTop(1) - we'll add empty lines manually instead
 
 	valueStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#50fa7b"))
+		Foreground(m.theme.TacticalValue)
 
 	mutedStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#6272a4"))
+		Foreground(m.theme.TacticalMuted)
 
 	var lines []string
 
@@ -573,6 +562,8 @@ func (m *model) updateViewportContent() {
 		"    ▀██▀    ",
 	}
 	
+	logoStyle := lipgloss.NewStyle().Foreground(m.theme.LogoColor).Bold(true)
+	
 	var contentLines []string
 	logoStart := len(agentLines)/2 - len(logo)/2
 	if logoStart < 0 {
@@ -652,13 +643,13 @@ func (m model) renderAgentLine(agent Agent) []string {
 	
 	if agent.IsDead {
 		statusIcon = "💀"
-		statusColor = lipgloss.Color("#626262") // Gray for dead
+		statusColor = m.theme.DeadColor
 	} else if agent.IsSession {
 		statusIcon = "◆"
-		statusColor = lipgloss.Color("#00ff00") // Green
+		statusColor = m.theme.SessionColor
 	} else {
 		statusIcon = "◇"  
-		statusColor = lipgloss.Color("#ffff00") // Yellow
+		statusColor = m.theme.BeaconColor
 	}
 
 	// OS icon
@@ -673,20 +664,34 @@ func (m model) renderAgentLine(agent Agent) []string {
 		osIcon = "🐧"
 	}
 
-	// Username color (gray if dead)
+	// Username color (dead overrides all)
 	var usernameColor lipgloss.Color
 	if agent.IsDead {
-		usernameColor = lipgloss.Color("#626262") // Gray
+		usernameColor = m.theme.DeadColor
 	} else if agent.IsPrivileged {
-		usernameColor = lipgloss.Color("#ff5555") // Softer red
+		usernameColor = m.theme.PrivilegedUser
 	} else {
-		usernameColor = lipgloss.Color("#50fa7b") // Softer cyan/green
+		usernameColor = m.theme.NormalUser
 	}
 
-	// Protocol color
-	protocolColor := lipgloss.Color("#8be9fd") // Softer cyan for MTLS
+	// Protocol color based on transport type
+	var protocolColor lipgloss.Color
 	if agent.IsDead {
-		protocolColor = lipgloss.Color("#626262") // Gray for dead
+		protocolColor = m.theme.DeadColor
+	} else {
+		transportLower := strings.ToLower(agent.Transport)
+		switch {
+		case strings.Contains(transportLower, "mtls"):
+			protocolColor = m.theme.ProtocolMTLS
+		case strings.Contains(transportLower, "http"):
+			protocolColor = m.theme.ProtocolHTTP
+		case strings.Contains(transportLower, "dns"):
+			protocolColor = m.theme.ProtocolDNS
+		case strings.Contains(transportLower, "tcp"):
+			protocolColor = m.theme.ProtocolTCP
+		default:
+			protocolColor = m.theme.ProtocolDefault
+		}
 	}
 
 	// Privilege badge
@@ -699,7 +704,7 @@ func (m model) renderAgentLine(agent Agent) []string {
 	newBadge := ""
 	if agent.IsNew && !agent.IsDead {
 		newBadge = "  " + lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#f1fa8c")).
+			Foreground(m.theme.NewBadgeColor).
 			Bold(true).
 			Render("✨ NEW")
 	}
@@ -724,8 +729,8 @@ func (m model) renderAgentLine(agent Agent) []string {
 
 	// Build second line - details (ID, IP, type)
 	line2 := fmt.Sprintf("                                          %s  │  %s  │  (%s)",
-		lipgloss.NewStyle().Foreground(lipgloss.Color("#6272a4")).Render(agent.ID[:8]),
-		lipgloss.NewStyle().Foreground(lipgloss.Color("#6272a4")).Render(agent.RemoteAddress),
+		lipgloss.NewStyle().Foreground(m.theme.TacticalMuted).Render(agent.ID[:8]),
+		lipgloss.NewStyle().Foreground(m.theme.TacticalMuted).Render(agent.RemoteAddress),
 		lipgloss.NewStyle().Foreground(statusColor).Render(typeLabel),
 	)
 
@@ -888,7 +893,10 @@ func main() {
 	// Create spinner
 	s := spinner.New()
 	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("#00d7ff"))
+	
+	// Initialize with default theme (index 0)
+	defaultTheme := GetTheme(0)
+	s.Style = lipgloss.NewStyle().Foreground(defaultTheme.TitleColor)
 
 	// Initialize model with default terminal size as fallback
 	m := model{
@@ -897,6 +905,8 @@ func main() {
 		loading:    true,
 		termWidth:  180, // Default fallback width
 		termHeight: 40,  // Default fallback height
+		themeIndex: 0,   // Start with default theme
+		theme:      defaultTheme,
 	}
 
 	// Create and run program with alt screen
