@@ -841,6 +841,10 @@ func (m model) renderArchitecturePanel() string {
 	mutedStyle := lipgloss.NewStyle().
 		Foreground(m.theme.TacticalMuted)
 	
+	// Cyan bar style for architecture
+	barStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#00CED1")) // Dark turquoise
+	
 	var lines []string
 	lines = append(lines, titleStyle.Render("🔹 ARCHITECTURE DISTRIBUTION"))
 	lines = append(lines, "")
@@ -883,7 +887,7 @@ func (m model) renderArchitecturePanel() string {
 				icon,
 				labelStyle.Render(fmt.Sprintf("%-10s", arch))))
 			lines = append(lines, fmt.Sprintf("  %s %s",
-				bar,
+				barStyle.Render(bar),
 				valueStyle.Render(fmt.Sprintf("%3.0f%% (%d)", percentage, count))))
 			lines = append(lines, "")
 		}
@@ -914,6 +918,10 @@ func (m model) renderTaskQueuePanel() string {
 	
 	mutedStyle := lipgloss.NewStyle().
 		Foreground(m.theme.TacticalMuted)
+	
+	// Cyan bar style for task progress
+	barStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#00CED1")) // Dark turquoise
 	
 	var lines []string
 	lines = append(lines, titleStyle.Render("📋 TASK QUEUE MONITOR"))
@@ -949,7 +957,7 @@ func (m model) renderTaskQueuePanel() string {
 				statusIcon,
 				labelStyle.Render(fmt.Sprintf("%-15s", agent.Hostname[:min(15, len(agent.Hostname))]))))
 			lines = append(lines, fmt.Sprintf("  %s %s",
-				bar,
+				barStyle.Render(bar),
 				valueStyle.Render(fmt.Sprintf("%d/%d", agent.TasksCompleted, agent.TasksCount))))
 			
 			if beaconsWithTasks >= 5 {
@@ -987,6 +995,10 @@ func (m model) renderSparklinePanel() string {
 	mutedStyle := lipgloss.NewStyle().
 		Foreground(m.theme.TacticalMuted)
 	
+	// Green style for sparklines
+	sparklineStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#00FF00")) // Bright green
+	
 	var lines []string
 	
 	// Get activity samples
@@ -1019,28 +1031,28 @@ func (m model) renderSparklinePanel() string {
 	// Sessions
 	lines = append(lines, fmt.Sprintf("%s  %s  Peak: %-2d  Now: %-2d",
 		labelStyle.Render("Sessions    "),
-		sessionsSparkline,
+		sparklineStyle.Render(sessionsSparkline),
 		stats.SessionsPeak,
 		stats.SessionsCurrent))
 	
 	// Beacons
 	lines = append(lines, fmt.Sprintf("%s  %s  Peak: %-2d  Now: %-2d",
 		labelStyle.Render("Beacons     "),
-		beaconsSparkline,
+		sparklineStyle.Render(beaconsSparkline),
 		stats.BeaconsPeak,
 		stats.BeaconsCurrent))
 	
 	// New Agents
 	lines = append(lines, fmt.Sprintf("%s  %s  Peak: %-2d  Now: %-2d",
 		labelStyle.Render("New Agents  "),
-		newSparkline,
+		sparklineStyle.Render(newSparkline),
 		stats.NewPeak,
 		stats.NewCurrent))
 	
 	// Privileged
 	lines = append(lines, fmt.Sprintf("%s  %s  Peak: %-2d  Now: %-2d",
 		labelStyle.Render("Privileged  "),
-		privilegedSparkline,
+		sparklineStyle.Render(privilegedSparkline),
 		stats.PrivilegedPeak,
 		stats.PrivilegedCurrent))
 	
@@ -1556,6 +1568,24 @@ func (m model) renderAgentLine(agent Agent) []string {
 	if agent.IsPrivileged && !agent.IsDead {
 		privBadge = " 💎"
 	}
+	
+	// Evasion badge (stealthy)
+	evasionBadge := ""
+	if agent.Evasion && !agent.IsDead {
+		evasionBadge = " " + lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#9370DB")). // Medium purple
+			Bold(true).
+			Render("🕵️ STEALTH")
+	}
+	
+	// Burned badge (compromised)
+	burnedBadge := ""
+	if agent.Burned && !agent.IsDead {
+		burnedBadge = " " + lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FF4500")). // Orange red
+			Bold(true).
+			Render("🔥 BURNED")
+	}
 
 	// Dead badge (shown after hostname)
 	deadBadge := ""
@@ -1583,7 +1613,7 @@ func (m model) renderAgentLine(agent Agent) []string {
 	
 	protocolBox := protocolBoxStyle.Render(strings.ToUpper(agent.Transport))
 	
-	line1 := fmt.Sprintf("%s%s%s▶ %s %s  %s%s%s",
+	line1 := fmt.Sprintf("%s%s%s▶ %s %s  %s%s%s%s%s",
 		connectorStyle.Render("╰────────"),
 		protocolBox,
 		connectorStyle.Render("────────"),
@@ -1592,6 +1622,8 @@ func (m model) renderAgentLine(agent Agent) []string {
 		lipgloss.NewStyle().Foreground(usernameColor).Bold(true).Render(fmt.Sprintf("%s@%s", agent.Username, agent.Hostname)),
 		deadBadge,
 		privBadge,
+		evasionBadge,
+		burnedBadge,
 	)
 
 	// Calculate indent for ID/IP lines - should align where the hostname starts
