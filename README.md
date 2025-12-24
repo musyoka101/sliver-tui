@@ -1,205 +1,184 @@
 # Sliver C2 Network Topology Visualizer
 
-A terminal-based emoji-enhanced network topology visualization tool for Sliver C2 that displays compromised hosts in a hierarchical tree structure, similar to Havoc and Cobalt Strike visualizations.
+A beautiful terminal-based network topology visualization tool for Sliver C2 that displays compromised hosts with hierarchical pivot chains, privilege detection, and real-time statistics.
 
-## Features
+## 📁 Project Structure
 
-- 🎯 **Hierarchical tree visualization** showing pivot relationships
-- 🟢 **Color-coded agents**:
-  - Green for active sessions (real-time)
-  - Yellow for active beacons (callback-based)
-- 🖥️  **OS-specific emojis**:
-  - 🖥️  Desktop for Windows sessions
-  - 💻 Laptop for Windows beacons
-  - 🐧 Penguin for Linux systems
-- 🔄 **Live monitoring** with auto-refresh (configurable interval)
-- 🌳 **Pivot chain detection**:
-  - Automatically detects agents connected through other agents
-  - Shows parent-child relationships in tree format
-  - Highlights pivoted connections with ↪ indicator
-- 📊 **Real-time statistics** footer
-- 🎨 **Protocol-specific colors**:
-  - Cyan for mTLS/TLS
-  - Green for HTTP/HTTPS
-  - Yellow for DNS
-  - Blue for TCP
-  - White for SMB
+This project has **two implementations**:
 
-## Requirements
-
-- Python 3.6+
-- Sliver C2 server running
-- Sliver client configured (have run `sliver-client` at least once)
-- Terminal with ANSI color and emoji support
-
-## Installation
-
-### Option 1: Quick Start (Using included launcher)
-
-Simply run the launcher script - it will automatically set up everything:
-
-```bash
-./graph
+```
+sliver-graphs/
+├── python/          # Python implementation (mature, feature-complete)
+│   ├── sliver-graph.py
+│   ├── graph        # Launcher script
+│   └── .venv/       # Virtual environment
+│
+└── go/              # Go + Bubble Tea implementation (modern, TUI)
+    ├── main.go
+    ├── go.mod
+    └── README.md
 ```
 
-The launcher will:
-1. Create a Python virtual environment if it doesn't exist
-2. Install `sliver-py` dependency
-3. Run the visualization tool
+## 🐍 Python Version
 
-### Option 2: Manual Installation
+**Location:** `python/`  
+**Status:** ✅ Production-ready, fully featured
 
-1. Create a virtual environment (optional but recommended):
+### Features
+- Real-time agent monitoring with auto-refresh
+- Hierarchical topology visualization with C2 logo
+- Multi-line agent display (username@host, ID, IP)
+- Privilege detection (💎 badges for Administrator/root)
+- Change detection (NEW badges, lost agents tracking)
+- Dead beacon detection
+- Protocol-specific colors (MTLS, HTTP, DNS, TCP)
+- Comprehensive statistics dashboard
+- OS-specific icons (🖥️ 💻 🐧)
+
+### Installation
 ```bash
+cd python
 python3 -m venv .venv
 source .venv/bin/activate
+pip install sliver-py
 ```
 
-2. Install the required Python library:
+### Usage
 ```bash
-pip3 install sliver-py
-```
+cd python
+source .venv/bin/activate
 
-3. Run the visualization tool:
-```bash
+# Run with auto-refresh (5 seconds)
 python3 sliver-graph.py
-```
 
-## Usage
+# Custom refresh interval
+python3 sliver-graph.py -r 10
 
-### Live Monitoring (Default)
-
-The tool runs in live monitoring mode by default, refreshing every 5 seconds:
-
-```bash
-./graph
-# or
-python3 sliver-graph.py
-```
-
-Press `Ctrl+C` to exit.
-
-### Custom Refresh Interval
-
-Change the refresh interval (in seconds):
-
-```bash
-./graph -r 10           # Refresh every 10 seconds
-python3 sliver-graph.py --refresh 10
-```
-
-### Run Once (No Loop)
-
-Run once and exit without live monitoring:
-
-```bash
-./graph --once
+# Run once (no loop)
 python3 sliver-graph.py --once
+
+# Or use the launcher script
+./graph
 ```
 
-## Example Output
+### Git Branches (Python)
+- `master` - Stable, basic features
+- `dev` - Production-ready with all features
+- `experimental` - Testing new features
 
-### Direct Connections (No Pivots)
-```
-╔════════════════════════════════════════════════════════════════════════════╗
-║  🎯 SLIVER C2 - NETWORK TOPOLOGY VISUALIZATION                            ║
-╚════════════════════════════════════════════════════════════════════════════╝
-  ⏰ Last Update: 2025-12-23 17:50:51  |  Press Ctrl+C to exit
+## 🚀 Go Version
 
-   🎯 C2         ───[ MTLS ]───▶ 🟢 🖥️  M3C\Administrator@m3dc  d0189a61 (session)
-  ▄████▄   
-  ████████      ───[ MTLS ]───▶ 🟡 💻 M3C\Administrator@m3dc  4370d26a (beacon)
-  ▀██████▀  
-    ▀██▀        ───[HTTPS]───▶ 🟡 💻 admin@webserver  b773f522 (beacon)
+**Location:** `go/`  
+**Status:** 🚧 Work in progress, beautiful TUI
 
-────────────────────────────────────────────────────────────────────────────────
-  🟢 Active Sessions: 1  🟡 Active Beacons: 2  🔵 Total Compromised: 3
-```
+### Features
+- Built with Bubble Tea (professional TUI framework)
+- Beautiful styling with Lip Gloss
+- C2 logo on left side
+- Single-line compact agent display
+- Interactive keyboard controls (r=refresh, q=quit)
+- Compiled binary (no dependencies)
 
-### With Pivot Chains
-```
-╔════════════════════════════════════════════════════════════════════════════╗
-║  🎯 SLIVER C2 - NETWORK TOPOLOGY VISUALIZATION                            ║
-╚════════════════════════════════════════════════════════════════════════════╝
-  ⏰ Last Update: 2025-12-23 17:50:51  |  Press Ctrl+C to exit
-
-   🎯 C2         ├──[ MTLS ]───▶ 🟢 🖥️  Administrator@WebServer  a1b2c3d4 (session)
-  ▄████▄        │  └─[ SMB ]──▶ 🟡 💻 SYSTEM@Database  e5f6g7h8 (beacon) ↪ pivoted
-  ████████      │  ├─[ TCP ]──▶ 🟡 💻 User@Workstation  i9j0k1l2 (beacon) ↪ pivoted
-  ▀██████▀      │
-    ▀██▀        ├──[HTTPS]───▶ 🟢 🐧 root@linux-server  m3n4o5p6 (session)
-                │  └─[NAMEDPIPE]▶ 🟡 🖥️  Admin@DC  q7r8s9t0 (beacon) ↪ pivoted
-
-────────────────────────────────────────────────────────────────────────────────
-  🟢 Active Sessions: 2  🟡 Active Beacons: 3  🔵 Total Compromised: 5
-```
-
-## Pivot Detection
-
-The tool automatically detects pivot relationships based on:
-
-1. **ProxyURL** - When an agent has a proxy URL set, it's routing through another agent
-2. **Transport types**:
-   - `namedpipe` - Windows named pipe pivoting
-   - `tcp-pivot` - TCP pivot connections
-   - `bind` - Bind connections
-3. **Network matching** - Agents on the same host may indicate pivoting
-
-Pivoted agents are displayed indented under their parent with:
-- Tree branch indicators (`├─`, `└─`)
-- ↪ pivoted label in magenta
-- Indented connection lines showing hierarchy
-
-## Troubleshooting
-
-### "sliver-py not found"
-Install it with:
+### Installation
 ```bash
-pip3 install sliver-py
+cd go
+go mod download
+go build -o sliver-graph main.go
 ```
 
-### "Sliver client config not found"
-Make sure you've run the Sliver client at least once:
+### Usage
 ```bash
-sliver-client
+cd go
+./sliver-graph
+
+# Keyboard shortcuts:
+# r - Manual refresh
+# q - Quit
 ```
 
-This will create the config file in `~/.sliver-client/configs/`
+### Git Branches (Go)
+- `go-bubbletea` - Go implementation branch
 
-### "'coroutine' object is not iterable"
-This has been fixed in the latest version. Make sure you're using the updated `sliver-graph.py` script with async support.
+## 🎯 Features Comparison
 
-### Colors don't display correctly
-- Ensure your terminal supports ANSI colors
-- Try using a different terminal emulator (e.g., Windows Terminal, iTerm2, gnome-terminal, terminator)
+| Feature | Python | Go |
+|---------|--------|-----|
+| C2 Logo | ✅ | ✅ |
+| Agent Display | Multi-line (detailed) | Single-line (compact) |
+| Auto-refresh | ✅ | ✅ |
+| Privilege Detection | ✅ | ✅ |
+| Change Detection | ✅ | ⏳ TODO |
+| Lost Agents | ✅ | ⏳ TODO |
+| Pivot Hierarchy | ✅ | ⏳ TODO |
+| Real Sliver Connection | ✅ | ⏳ TODO (mock data) |
+| Binary Distribution | ❌ (needs Python) | ✅ (single binary) |
+| Startup Time | Slow (~1-2s) | Instant (<100ms) |
+| Interactive TUI | ❌ | ✅ (Bubble Tea) |
 
-## Files
+## 🎨 Screenshots
 
-- `sliver-graph.py` - Main visualization script
-- `graph` - Launcher script with auto-setup
-- `README.md` - This file
-- `.venv/` - Python virtual environment (created automatically)
+### Python Version
+```
+╔════════════════════════════════════════════════════════════╗
+║  🎯 SLIVER C2 - NETWORK TOPOLOGY VISUALIZATION            ║
+╚════════════════════════════════════════════════════════════╝
 
-## How It Works
+                    ╰────────[ MTLS ]────────▶ ◆ 🖥️  NT AUTHORITY\NETWORK SERVICE@cywebdw
+                                                     └─ ID: 22bf4a82 (session) ✨ NEW!
+  🎯 C2                                              └─ IP: 10.10.110.10:50199
+ ▄████▄         ╰────────[ MTLS ]────────▶ ◇ 💻 M3C\Administrator@m3dc 💎
+ ████████                                             └─ ID: 4370d26a (beacon)
+ ▀██████▀                                             └─ IP: 10.10.110.250:63805
+   ▀██▀    
 
-This tool is **not a Sliver extension** (which would require compiled binaries), but rather a standalone Python tool that:
-1. Reads your Sliver client configuration from `~/.sliver-client/configs/`
-2. Connects to Sliver's gRPC API using the `sliver-py` library
-3. Fetches all active sessions and beacons
-4. Renders them in an ASCII network topology visualization
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🟢 Sessions: 1  🟡 Beacons: 3  🔵 Hosts: 3  🔴 Privileged: 2
+```
 
-## Why Not a Sliver Extension?
+### Go Version
+```
+╭────────────────────────────────────╮
+│ 🎯 SLIVER C2 - NETWORK TOPOLOGY   │
+╰────────────────────────────────────╯
 
-Sliver extensions must be compiled binaries (DLL/EXE/SO files) written in languages like C/C++/Go. While this is powerful for executing code on implants, it's unnecessarily complex for a simple visualization tool that runs on the operator's machine. This standalone approach is:
-- Easier to develop and maintain
-- Cross-platform without compilation
-- Simple to install and use
-- Achieves the same visualization goal
+ 🎯 C2       ——[ MTLS ]——▶ ◆ 🖥️  NT AUTHORITY\NETWORK SERVICE@cywebdw  22bf4a82 (session)
+▄████▄       ——[ MTLS ]——▶ ◇ 💻  M3C\Administrator@m3dc 💎  4370d26a (beacon)
+████████  
+▀██████▀  
+  ▀██▀    
 
-## Author
+────────────────────────────────────────────────────────────
+🟢 Active Sessions: 1  🟡 Active Beacons: 3  🔵 Total Compromised: 4
+```
 
-Cybernetics Team
+## 🛠️ Requirements
 
-## License
+### Python Version
+- Python 3.6+
+- sliver-py
+- Sliver C2 client configured (~/.sliver-client/configs/*.cfg)
 
-Use at your own risk for authorized testing only.
+### Go Version
+- Go 1.21+
+- Bubble Tea, Lip Gloss, Bubbles (auto-installed)
+- Sliver C2 client configured
+
+## 🤝 Contributing
+
+Both implementations are actively developed:
+- **Python** - Add features to `dev` or `experimental` branches
+- **Go** - Work on `go-bubbletea` branch
+
+## 📝 License
+
+MIT
+
+## 🎓 Author
+
+musyoka101 (ianmusyoka101@gmail.com)
+
+## 🔗 Links
+
+- [Sliver C2](https://github.com/BishopFox/sliver)
+- [sliver-py](https://github.com/moloch--/sliver-py)
+- [Bubble Tea](https://github.com/charmbracelet/bubbletea)
