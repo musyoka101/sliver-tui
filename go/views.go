@@ -113,7 +113,7 @@ func (m model) renderAgentBox(agent Agent) []string {
 	)
 
 	// Line 2: ID, IP, transport
-	detailsInfo := fmt.Sprintf("%s │ %s │ %s",
+	detailsInfo := fmt.Sprintf("%s | %s | %s",
 		lipgloss.NewStyle().Foreground(m.theme.TacticalMuted).Render(agent.ID[:8]),
 		lipgloss.NewStyle().Foreground(m.theme.TacticalMuted).Render(agent.RemoteAddress),
 		lipgloss.NewStyle().Foreground(m.theme.TacticalValue).Render(agent.Transport),
@@ -158,7 +158,7 @@ func (m model) renderAgentTreeWithViewAndContext(agent Agent, depth int, viewTyp
 	if viewType == ViewTypeBox {
 		// Box view: use vertical connectors for parent-child relationships
 		if depth > 0 {
-			// Add connector from parent
+			// Child agent - add connector from parent
 			indent := strings.Repeat("   ", depth-1)
 			connectorColor := m.theme.TacticalBorder
 			
@@ -171,8 +171,34 @@ func (m model) renderAgentTreeWithViewAndContext(agent Agent, depth int, viewTyp
 				lines = append(lines, indent+"        "+agentLines[i])
 			}
 		} else {
-			// Root level - no connector
-			lines = append(lines, agentLines...)
+			// Root level - boxes on the right, vertical line with arrows on left
+			connectorColor := m.theme.TacticalBorder
+			
+			// Calculate which line is the middle of the box (for arrow placement)
+			middleLine := 1 // Second line (0-indexed) for 4-line box
+			
+			for i, boxLine := range agentLines {
+				if i == middleLine {
+					// Middle line: add T-junction with arrow pointing right
+					if !isLastChild {
+						connector := lipgloss.NewStyle().Foreground(connectorColor).Render("├───▶ ")
+						lines = append(lines, connector+boxLine)
+					} else {
+						// Last box: use corner
+						connector := lipgloss.NewStyle().Foreground(connectorColor).Render("╰───▶ ")
+						lines = append(lines, connector+boxLine)
+					}
+				} else {
+					// Other lines: just vertical line or spaces
+					if !isLastChild || i < middleLine {
+						vline := lipgloss.NewStyle().Foreground(connectorColor).Render("│     ")
+						lines = append(lines, vline+boxLine)
+					} else {
+						// After the corner on last box, use spaces
+						lines = append(lines, "      "+boxLine)
+					}
+				}
+			}
 		}
 	} else {
 		// Tree view: use existing tree connector logic

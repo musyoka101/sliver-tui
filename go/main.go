@@ -565,7 +565,7 @@ func (m *model) updateViewportContent() {
 	// Render agents to string
 	agentLines := m.renderAgents()
 	
-	// Add logo integration
+	// Logo definition
 	logo := []string{
 		"   🎯 C2    ",
 		"  ▄████▄   ",
@@ -577,19 +577,39 @@ func (m *model) updateViewportContent() {
 	logoStyle := lipgloss.NewStyle().Foreground(m.theme.LogoColor).Bold(true)
 	
 	var contentLines []string
-	logoStart := len(agentLines)/2 - len(logo)/2
-	if logoStart < 0 {
-		logoStart = 0
-	}
 	
-	for i, agentLine := range agentLines {
-		var logoLine string
-		if i >= logoStart && i < logoStart+len(logo) {
-			logoLine = logoStyle.Render(logo[i-logoStart])
-		} else {
-			logoLine = strings.Repeat(" ", 12)
+	if m.view.Type == ViewTypeTree {
+		// Tree view: Logo overlaid on left side (original behavior)
+		logoStart := len(agentLines)/2 - len(logo)/2
+		if logoStart < 0 {
+			logoStart = 0
 		}
-		contentLines = append(contentLines, "  "+logoLine+"    "+agentLine)
+		
+		for i, agentLine := range agentLines {
+			var logoLine string
+			if i >= logoStart && i < logoStart+len(logo) {
+				logoLine = logoStyle.Render(logo[i-logoStart])
+			} else {
+				logoLine = strings.Repeat(" ", 12)
+			}
+			contentLines = append(contentLines, "  "+logoLine+"    "+agentLine)
+		}
+	} else {
+		// Box view: Logo at top, then central line with boxes connecting to it
+		// Render logo centered
+		for _, logoLine := range logo {
+			contentLines = append(contentLines, "  "+logoStyle.Render(logoLine))
+		}
+		
+		// Add central vertical line from logo to agents
+		connectorColor := m.theme.TacticalBorder
+		contentLines = append(contentLines, "  "+lipgloss.NewStyle().Foreground(connectorColor).Render("      │"))
+		contentLines = append(contentLines, "  "+lipgloss.NewStyle().Foreground(connectorColor).Render("      │"))
+		
+		// Add boxes with arrows pointing to central line
+		for _, agentLine := range agentLines {
+			contentLines = append(contentLines, agentLine)
+		}
 	}
 	
 	// Set viewport content
