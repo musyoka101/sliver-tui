@@ -220,18 +220,34 @@ func (m model) View() string {
 			"    ▀██▀    ",
 		}
 		logoStyle := lipgloss.NewStyle().Foreground(m.theme.LogoColor).Bold(true)
-		logoStart := len(agentLines)/2 - len(logo)/2
-		if logoStart < 0 {
-			logoStart = 0
+		
+		// Logo on left, agents on right with connectors from logo area
+		logoStart := 0 // Start logo from the top
+		if len(agentLines) > len(logo) {
+			// If there are more agent lines than logo lines, center the logo
+			logoStart = (len(agentLines) - len(logo)) / 2
 		}
-		for i, agentLine := range agentLines {
+		
+		// Build lines with logo on left and agents on right
+		maxLines := len(agentLines)
+		if len(logo) > maxLines {
+			maxLines = len(logo)
+		}
+		
+		for i := 0; i < maxLines; i++ {
 			var logoLine string
 			if i >= logoStart && i < logoStart+len(logo) {
 				logoLine = logoStyle.Render(logo[i-logoStart])
 			} else {
 				logoLine = strings.Repeat(" ", 12)
 			}
-			contentLines = append(contentLines, "  "+logoLine+"    "+agentLine)
+			
+			var agentLine string
+			if i < len(agentLines) {
+				agentLine = agentLines[i]
+			}
+			
+			contentLines = append(contentLines, " "+logoLine+"  "+agentLine)
 		}
 	}
 	
@@ -579,20 +595,33 @@ func (m *model) updateViewportContent() {
 	var contentLines []string
 	
 	if m.view.Type == ViewTypeTree {
-		// Tree view: Logo overlaid on left side (original behavior)
-		logoStart := len(agentLines)/2 - len(logo)/2
-		if logoStart < 0 {
-			logoStart = 0
+		// Tree view: Logo on left, agents on right with connectors from logo area
+		logoStart := 0 // Start logo from the top
+		if len(agentLines) > len(logo) {
+			// If there are more agent lines than logo lines, center the logo
+			logoStart = (len(agentLines) - len(logo)) / 2
 		}
 		
-		for i, agentLine := range agentLines {
+		// Build lines with logo on left and agents on right
+		maxLines := len(agentLines)
+		if len(logo) > maxLines {
+			maxLines = len(logo)
+		}
+		
+		for i := 0; i < maxLines; i++ {
 			var logoLine string
 			if i >= logoStart && i < logoStart+len(logo) {
 				logoLine = logoStyle.Render(logo[i-logoStart])
 			} else {
 				logoLine = strings.Repeat(" ", 12)
 			}
-			contentLines = append(contentLines, "  "+logoLine+"    "+agentLine)
+			
+			var agentLine string
+			if i < len(agentLines) {
+				agentLine = agentLines[i]
+			}
+			
+			contentLines = append(contentLines, " "+logoLine+"  "+agentLine)
 		}
 	} else {
 		// Box view: Logo at top with vertical line starting from bottom
@@ -637,7 +666,7 @@ func (m model) renderAgents() []string {
 func (m model) renderAgentTree(agent Agent, depth int) []string {
 	var lines []string
 	
-	// Render current agent (returns 2 lines now)
+	// Render current agent (returns 3 lines now)
 	indent := strings.Repeat("  ", depth)
 	agentLines := m.renderAgentLine(agent)
 	
@@ -649,11 +678,12 @@ func (m model) renderAgentTree(agent Agent, depth int) []string {
 		
 		// First line gets the connector
 		agentLines[0] = indent + connector + agentLines[0]
-		// Second line gets matching indentation
+		// Second and third lines get matching indentation
 		agentLines[1] = indent + "    " + agentLines[1]
+		agentLines[2] = indent + "    " + agentLines[2]
 	}
 	
-	// Add both lines
+	// Add all lines
 	lines = append(lines, agentLines...)
 	
 	// Add spacing between agents at root level
@@ -688,7 +718,7 @@ func (m model) renderAgentLine(agent Agent) []string {
 		statusColor = m.theme.BeaconColor
 	}
 
-	// OS icon
+	// OS icon - differentiate session vs beacon for Windows
 	osIcon := "💻"
 	if strings.Contains(strings.ToLower(agent.OS), "windows") {
 		if agent.IsSession {
@@ -712,6 +742,7 @@ func (m model) renderAgentLine(agent Agent) []string {
 
 	// Protocol color based on transport type
 	var protocolColor lipgloss.Color
+	var connectorColor lipgloss.Color = m.theme.TacticalBorder
 	if agent.IsDead {
 		protocolColor = m.theme.DeadColor
 	} else {
@@ -730,19 +761,19 @@ func (m model) renderAgentLine(agent Agent) []string {
 		}
 	}
 
-	// Privilege badge
-	privBadge := ""
-	if agent.IsPrivileged && !agent.IsDead {
-		privBadge = "  💎"
-	}
-
 	// NEW badge
 	newBadge := ""
 	if agent.IsNew && !agent.IsDead {
-		newBadge = "  " + lipgloss.NewStyle().
+		newBadge = " " + lipgloss.NewStyle().
 			Foreground(m.theme.NewBadgeColor).
 			Bold(true).
-			Render("✨ NEW")
+			Render("✨ NEW!")
+	}
+
+	// Privilege badge
+	privBadge := ""
+	if agent.IsPrivileged && !agent.IsDead {
+		privBadge = " 💎"
 	}
 
 	// Type label
@@ -753,25 +784,41 @@ func (m model) renderAgentLine(agent Agent) []string {
 		typeLabel = "dead"
 	}
 
-	// Build first line - main agent info
-	line1 := fmt.Sprintf("──────────[ %s ]──────────▶  %s %s  %s%s%s",
-		lipgloss.NewStyle().Foreground(protocolColor).Render(agent.Transport),
+	// Build first line - connector from left with protocol box integrated
+	connectorStyle := lipgloss.NewStyle().Foreground(connectorColor)
+	line1 := fmt.Sprintf("[ %s ]%s▶ %s %s  %s%s",
+		lipgloss.NewStyle().Foreground(protocolColor).Bold(true).Render(strings.ToUpper(agent.Transport)),
+		connectorStyle.Render("──────────"),
 		lipgloss.NewStyle().Foreground(statusColor).Render(statusIcon),
 		osIcon,
 		lipgloss.NewStyle().Foreground(usernameColor).Bold(true).Render(fmt.Sprintf("%s@%s", agent.Username, agent.Hostname)),
 		privBadge,
-		newBadge,
 	)
 
-	// Build second line - details (ID, IP, type)
-	line2 := fmt.Sprintf("                                          %s  │  %s  │  (%s)",
+	// Calculate indent for ID/IP lines - should align where the hostname starts
+	// Protocol box [ MTLS ] is ~8 chars, connector ────────── is 10, arrow ▶ is 1, 
+	// status icon ◆ is 1, space is 1, OS icon 🖥️ is 1, two spaces is 2
+	// Total before hostname starts: 8 + 10 + 1 + 1 + 1 + 1 + 2 = 24 chars (approximately)
+	// But we need to account for visual width of emojis which may render wider
+	idIpIndent := 28
+	
+	// Build second line - ID with connector (aligned where hostname starts)
+	line2 := fmt.Sprintf("%s└─ ID: %s (%s)%s",
+		strings.Repeat(" ", idIpIndent),
 		lipgloss.NewStyle().Foreground(m.theme.TacticalMuted).Render(agent.ID[:8]),
-		lipgloss.NewStyle().Foreground(m.theme.TacticalMuted).Render(agent.RemoteAddress),
 		lipgloss.NewStyle().Foreground(statusColor).Render(typeLabel),
+		newBadge,
+	)
+	
+	// Build third line - IP with connector (aligned where hostname starts)
+	line3 := fmt.Sprintf("%s└─ IP: %s",
+		strings.Repeat(" ", idIpIndent),
+		lipgloss.NewStyle().Foreground(m.theme.TacticalMuted).Render(agent.RemoteAddress),
 	)
 
 	lines = append(lines, line1)
 	lines = append(lines, line2)
+	lines = append(lines, line3)
 
 	return lines
 }
