@@ -63,6 +63,8 @@ type model struct {
 	ready        bool // Viewport initialized
 	themeIndex   int  // Current theme index
 	theme        Theme // Current theme
+	viewIndex    int  // Current view index
+	view         View // Current view
 }
 
 func (m model) Init() tea.Cmd {
@@ -90,6 +92,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.themeIndex = (m.themeIndex + 1) % GetThemeCount()
 			m.theme = GetTheme(m.themeIndex)
 			// Update viewport content with new theme
+			if m.ready {
+				m.updateViewportContent()
+			}
+			return m, nil
+		
+		// View switching
+		case "v":
+			m.viewIndex = (m.viewIndex + 1) % GetViewCount()
+			m.view = GetView(m.viewIndex)
+			// Update viewport content with new view
 			if m.ready {
 				m.updateViewportContent()
 			}
@@ -185,7 +197,7 @@ func (m model) View() string {
 	if m.termWidth > 0 && m.termHeight > 0 {
 		statusText += fmt.Sprintf("  │  Term: %dx%d", m.termWidth, m.termHeight)
 	}
-	statusText += fmt.Sprintf("  │  Theme: %s", m.theme.Name)
+	statusText += fmt.Sprintf("  │  Theme: %s  │  View: %s", m.theme.Name, m.view.Name)
 	headerLines = append(headerLines, statusStyle.Render(statusText))
 	headerLines = append(headerLines, "")
 	
@@ -250,7 +262,7 @@ func (m model) View() string {
 	
 	footerLines = append(footerLines, "")
 	helpStyle := lipgloss.NewStyle().Foreground(m.theme.HelpColor)
-	helpText := "  Press 'r' to refresh  │  't' to change theme  │  '↑↓' or 'j/k' to scroll  │  'q' to quit"
+	helpText := "  Press 'r' to refresh  │  't' to change theme  │  'v' to change view  │  '↑↓' or 'j/k' to scroll  │  'q' to quit"
 	footerLines = append(footerLines, helpStyle.Render(helpText))
 	footerLines = append(footerLines, "")
 	
@@ -553,7 +565,7 @@ func (m *model) updateViewportContent() {
 	// Render agents to string
 	agentLines := m.renderAgents()
 	
-	// Add logo integration
+	// Logo definition
 	logo := []string{
 		"   🎯 C2    ",
 		"  ▄████▄   ",
@@ -565,19 +577,42 @@ func (m *model) updateViewportContent() {
 	logoStyle := lipgloss.NewStyle().Foreground(m.theme.LogoColor).Bold(true)
 	
 	var contentLines []string
-	logoStart := len(agentLines)/2 - len(logo)/2
-	if logoStart < 0 {
-		logoStart = 0
-	}
 	
-	for i, agentLine := range agentLines {
-		var logoLine string
-		if i >= logoStart && i < logoStart+len(logo) {
-			logoLine = logoStyle.Render(logo[i-logoStart])
-		} else {
-			logoLine = strings.Repeat(" ", 12)
+	if m.view.Type == ViewTypeTree {
+		// Tree view: Logo overlaid on left side (original behavior)
+		logoStart := len(agentLines)/2 - len(logo)/2
+		if logoStart < 0 {
+			logoStart = 0
 		}
-		contentLines = append(contentLines, "  "+logoLine+"    "+agentLine)
+		
+		for i, agentLine := range agentLines {
+			var logoLine string
+			if i >= logoStart && i < logoStart+len(logo) {
+				logoLine = logoStyle.Render(logo[i-logoStart])
+			} else {
+				logoLine = strings.Repeat(" ", 12)
+			}
+			contentLines = append(contentLines, "  "+logoLine+"    "+agentLine)
+		}
+	} else {
+		// Box view: Logo at top with vertical line starting from bottom
+		connectorColor := m.theme.TacticalBorder
+		
+		// Render logo with padding
+		for _, logoLine := range logo {
+			contentLines = append(contentLines, "      "+logoStyle.Render(logoLine))
+		}
+		
+		// Start vertical line from bottom of logo
+		vlinePrefix := "            " // 12 spaces to position line under logo
+		contentLines = append(contentLines, vlinePrefix+lipgloss.NewStyle().Foreground(connectorColor).Render("│"))
+		contentLines = append(contentLines, vlinePrefix+lipgloss.NewStyle().Foreground(connectorColor).Render("│"))
+		
+		// Add boxes with arrows pointing from the vertical line
+		// Need to add prefix to boxes to align with the vertical line
+		for _, agentLine := range agentLines {
+			contentLines = append(contentLines, vlinePrefix+agentLine)
+		}
 	}
 	
 	// Set viewport content
@@ -590,9 +625,10 @@ func (m model) renderAgents() []string {
 	// Build hierarchical tree
 	tree := buildAgentTree(m.agents)
 
-	// Render tree with indentation
-	for _, agent := range tree {
-		lines = append(lines, m.renderAgentTree(agent, 0)...)
+	// Render tree with indentation using current view
+	for i, agent := range tree {
+		hasNext := i < len(tree)-1
+		lines = append(lines, m.renderAgentTreeWithViewAndContext(agent, 0, m.view.Type, hasNext, !hasNext)...)
 	}
 
 	return lines
@@ -897,6 +933,9 @@ func main() {
 	// Initialize with default theme (index 0)
 	defaultTheme := GetTheme(0)
 	s.Style = lipgloss.NewStyle().Foreground(defaultTheme.TitleColor)
+	
+	// Initialize with default view (index 0)
+	defaultView := GetView(0)
 
 	// Initialize model with default terminal size as fallback
 	m := model{
@@ -907,6 +946,8 @@ func main() {
 		termHeight: 40,  // Default fallback height
 		themeIndex: 0,   // Start with default theme
 		theme:      defaultTheme,
+		viewIndex:  0,   // Start with default view
+		view:       defaultView,
 	}
 
 	// Create and run program with alt screen
