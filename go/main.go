@@ -222,11 +222,11 @@ func (m model) View() string {
 		// Initial render before viewport ready
 		agentLines := m.renderAgents()
 		logo := []string{
-			"   🎯 C2    ",
-			"  ▄████▄   ",
-			"  ████████  ",
-			"  ▀██████▀  ",
-			"    ▀██▀    ",
+			"    🔥🔥     ",
+			"  ▄▄▄▄▄▄▄   ",
+			"  █ C2  █   ",
+			"  █▓▓▓▓▓█   ",
+			"  ▀▀▀▀▀▀▀   ",
 		}
 		logoStyle := lipgloss.NewStyle().Foreground(m.theme.LogoColor).Bold(true)
 		
@@ -593,11 +593,11 @@ func (m *model) updateViewportContent() {
 	
 	// Logo definition
 	logo := []string{
-		"   🎯 C2    ",
-		"  ▄████▄   ",
-		"  ████████  ",
-		"  ▀██████▀  ",
-		"    ▀██▀    ",
+		"    🔥🔥     ",
+		"  ▄▄▄▄▄▄▄   ",
+		"  █ C2  █   ",
+		"  █▓▓▓▓▓█   ",
+		"  ▀▀▀▀▀▀▀   ",
 	}
 	
 	logoStyle := lipgloss.NewStyle().Foreground(m.theme.LogoColor).Bold(true)
