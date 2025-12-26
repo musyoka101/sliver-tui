@@ -13,6 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	
+	"github.com/musyoka101/sliver-graphs/internal/alerts"
 	"github.com/musyoka101/sliver-graphs/internal/client"
 	"github.com/musyoka101/sliver-graphs/internal/config"
 	"github.com/musyoka101/sliver-graphs/internal/models"
@@ -98,6 +99,8 @@ type model struct {
 	expandedSubnets map[string]bool  // Track which subnets are expanded
 	subnetOrder     []string         // Track subnet display order for numbered shortcuts
 	numberBuffer    string           // Buffer for multi-digit subnet number input
+	alertManager    *alerts.AlertManager // Alert/notification system
+	previousAgents  map[string]Agent // Track previous agent state for change detection
 }
 
 func (m model) Init() tea.Cmd {
@@ -105,6 +108,7 @@ func (m model) Init() tea.Cmd {
 		m.spinner.Tick,
 		fetchAgentsCmd,
 		sampleActivityCmd, // Start activity sampling timer
+		pulseTimerCmd,     // Start pulse animation timer for alerts
 	)
 }
 
@@ -296,6 +300,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 
 	case agentsMsg:
+		// Detect changes and generate alerts
+		m.detectAgentChanges(msg.agents)
+		
 		m.agents = msg.agents
 		m.stats = msg.stats
 		m.loading = false
@@ -323,6 +330,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Schedule next sample
 		cmds = append(cmds, sampleActivityCmd)
 
+	case pulseTimerMsg:
+		// Update pulse animation state for critical alerts
+		if m.alertManager != nil {
+			m.alertManager.UpdatePulse()
+			// Update viewport to show new pulse state
+			if m.ready {
+				m.updateViewportContent()
+			}
+		}
+		// Schedule next pulse update
+		cmds = append(cmds, pulseTimerCmd)
+
 	case refreshMsg:
 		m.loading = true
 		cmds = append(cmds, fetchAgentsCmd)
@@ -334,6 +353,172 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, tea.Batch(cmds...)
+}
+
+// detectAgentChanges compares current agents with previous state and generates alerts
+func (m *model) detectAgentChanges(newAgents []Agent) {
+	if m.alertManager == nil {
+		return
+	}
+
+	// Create map of new agents for quick lookup
+	newAgentMap := make(map[string]Agent)
+	for _, agent := range newAgents {
+		newAgentMap[agent.ID] = agent
+	}
+
+	// Detect new agents (connected)
+	for _, agent := range newAgentMap {
+		if _, exists := m.previousAgents[agent.ID]; !exists {
+			// New agent connected
+			alertType := alerts.AlertSuccess
+			if agent.IsPrivileged {
+				alertType = alerts.AlertSuccess // Privileged access is success
+				m.alertManager.AddAlert(alertType, alerts.CategoryPrivilegedAccess, "Privileged access gained", agent.Hostname)
+			} else {
+				m.alertManager.AddAlert(alertType, alerts.CategoryAgentConnected, "New agent connected", agent.Hostname)
+			}
+		}
+	}
+
+	// Detect lost agents (disconnected)
+	for id, oldAgent := range m.previousAgents {
+		if _, exists := newAgentMap[id]; !exists {
+			// Agent disappeared
+			m.alertManager.AddAlert(alerts.AlertCritical, alerts.CategoryAgentDisconnected, "Agent lost", oldAgent.Hostname)
+		}
+	}
+
+	// Detect beacon late/missed check-ins
+	for _, agent := range newAgentMap {
+		if !agent.IsSession { // Only check beacons
+			// Check if beacon is late (this logic should be in your Agent struct or tracking)
+			if agent.IsDead {
+				m.alertManager.AddAlert(alerts.AlertWarning, alerts.CategoryBeaconMissed, "Beacon missed check-in", agent.Hostname)
+			}
+		}
+	}
+
+	// Detect session events
+	for id, newAgent := range newAgentMap {
+		if oldAgent, exists := m.previousAgents[id]; exists {
+			// Check if session state changed
+			if newAgent.IsSession && !oldAgent.IsSession {
+				m.alertManager.AddAlert(alerts.AlertInfo, alerts.CategorySessionOpened, "Session opened", newAgent.Hostname)
+			} else if !newAgent.IsSession && oldAgent.IsSession {
+				m.alertManager.AddAlert(alerts.AlertInfo, alerts.CategorySessionClosed, "Session closed", newAgent.Hostname)
+			}
+		}
+	}
+
+	// Update previous agents map
+	m.previousAgents = newAgentMap
+}
+
+// renderAlertPanel renders the military-style alert/notification panel
+func (m model) renderAlertPanel() string {
+	if m.alertManager == nil {
+		return ""
+	}
+
+	activeAlerts := m.alertManager.GetAlerts()
+	if len(activeAlerts) == 0 {
+		return "" // No alerts to show
+	}
+
+	// Get pulse state for critical alerts animation
+	pulseState := m.alertManager.GetPulseState()
+	hasCritical := m.alertManager.HasCriticalAlerts()
+
+	// Border color based on alert severity and pulse state (uses theme colors)
+	borderColor := m.theme.TacticalBorder // Default uses tactical border color
+	if hasCritical {
+		// Pulse animation for critical alerts (uses theme's DeadColor for red/critical)
+		switch pulseState {
+		case 0:
+			borderColor = m.theme.DeadColor // Bright
+		case 1:
+			borderColor = m.theme.TacticalMuted // Medium
+		case 2:
+			borderColor = m.theme.SeparatorColor // Dark
+		}
+	}
+
+	// Panel styling with military aesthetic - slightly wider than tactical panel
+	panelStyle := lipgloss.NewStyle().
+		Border(lipgloss.DoubleBorder()).
+		BorderForeground(borderColor).
+		Background(m.theme.TacticalPanelBg). // Use theme background
+		Padding(0, 1).
+		Width(45) // Wider for better alert display
+
+	titleStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TacticalBorder). // Use theme color
+		Bold(true)
+
+	// Status indicator
+	statusIndicator := "◉ ACTIVE"
+	statusColor := m.theme.SessionColor // Green from theme
+	if hasCritical {
+		statusIndicator = "◉ ALERT"
+		statusColor = m.theme.DeadColor // Red from theme
+	}
+
+	// Compact header for 35-char width panel
+	headerLine := fmt.Sprintf("⚠ ALERTS %s",
+		lipgloss.NewStyle().Foreground(statusColor).Bold(true).Render(statusIndicator))
+
+	var lines []string
+	lines = append(lines, titleStyle.Render(headerLine))
+
+	// Render each alert
+	for _, alert := range activeAlerts {
+		// Color based on alert type (uses theme colors)
+		var textColor lipgloss.Color
+		switch alert.Type {
+		case alerts.AlertCritical:
+			textColor = m.theme.DeadColor // Red/critical
+		case alerts.AlertWarning:
+			textColor = m.theme.BeaconColor // Orange/yellow warning
+		case alerts.AlertSuccess:
+			textColor = m.theme.SessionColor // Green success
+		case alerts.AlertInfo:
+			textColor = m.theme.TitleColor // Cyan/blue info
+		case alerts.AlertNotice:
+			textColor = m.theme.TacticalMuted // Gray/muted
+		}
+
+		// Format timestamp
+		timeStr := alert.Timestamp.Format("15:04")
+
+		// Build alert line with military styling
+		icon := alert.GetIcon()
+		label := alert.GetLabel()
+		agentName := alert.AgentName
+		if agentName == "" {
+			agentName = alert.Message
+		}
+		
+		// Truncate agent name if too long (max 20 chars for wider panel)
+		if len(agentName) > 20 {
+			agentName = agentName[:20]
+		}
+
+		// Compact format: ║█║ 19:45 ALERT_TYPE
+		// Then next line: Agent name
+		alertLine1 := fmt.Sprintf("%s %s %s",
+			lipgloss.NewStyle().Foreground(textColor).Bold(true).Render(icon),
+			lipgloss.NewStyle().Foreground(m.theme.TacticalMuted).Render(timeStr), // Use theme muted color
+			lipgloss.NewStyle().Foreground(textColor).Bold(true).Render(label))
+		
+		alertLine2 := fmt.Sprintf("   %s",
+			lipgloss.NewStyle().Foreground(m.theme.TacticalValue).Render(agentName)) // Use theme value color
+
+		lines = append(lines, alertLine1)
+		lines = append(lines, alertLine2)
+	}
+
+	return panelStyle.Render(strings.Join(lines, "\n"))
 }
 
 func (m model) View() string {
@@ -457,51 +642,41 @@ func (m model) View() string {
 	// Combine header + content + footer for left side
 	leftContent := strings.Join(append(append(headerLines, contentLines...), footerLines...), "\n")
 	
-	// Add tactical panel if we have agents - position it as an absolute overlay
+	// Add tactical panel and alert panel as overlays on the right side
 	tacticalPanel := m.renderTacticalPanel()
+	alertPanel := m.renderAlertPanel()
+	
 	if len(m.agents) > 0 && tacticalPanel != "" && m.termWidth > 100 {
-		// DEBUG: Write view composition details
-		if os.Getenv("DEBUG_VIEW") == "1" {
-			debugInfo := fmt.Sprintf("=== VIEW DEBUG ===\n"+
-				"Header lines: %d\n"+
-				"Content lines: %d\n"+
-				"Footer lines: %d\n"+
-				"Left total: %d\n"+
-				"Panel lines: %d\n"+
-				"Term: %dx%d\n"+
-				"Panel X pos: %d\n",
-				len(headerLines),
-				len(contentLines),
-				len(footerLines),
-				len(strings.Split(leftContent, "\n")),
-				len(strings.Split(tacticalPanel, "\n")),
-				m.termWidth, m.termHeight,
-				m.termWidth-37)
-			os.WriteFile("/tmp/view_debug.txt", []byte(debugInfo), 0644)
-		}
-		
 		// Calculate panel position (right edge minus panel width)
-		// Panel is Width(35) + Padding(1,2) + Border = 37 chars total
-		panelWidth := 37
-		panelX := m.termWidth - panelWidth
+		// Alert Panel is Width(45) + Padding(0,1) + Border = 49 chars total (wider than tactical)
+		// Use the wider alert panel width to determine X position so both panels fit
+		alertPanelWidth := 49
+		panelX := m.termWidth - alertPanelWidth - 2 // Extra 2 char padding from edge
 		if panelX < 100 {
 			panelX = 100
 		}
 		
 		// Split content into lines
 		leftLines := strings.Split(leftContent, "\n")
-		panelLines := strings.Split(tacticalPanel, "\n")
+		tacticalPanelLines := strings.Split(tacticalPanel, "\n")
+		alertPanelLines := []string{}
+		if alertPanel != "" {
+			alertPanelLines = strings.Split(alertPanel, "\n")
+		}
 		
 		// Calculate how many header lines we have (these should not be truncated)
 		headerLineCount := len(headerLines)
 		
-		// Ensure we have enough lines for the full panel
+		// Calculate where alert panel starts (after tactical panel)
+		alertPanelStartLine := headerLineCount + len(tacticalPanelLines)
+		
+		// Ensure we have enough lines for both panels
 		totalLines := len(leftLines)
-		if len(panelLines) > totalLines {
-			totalLines = len(panelLines)
+		if headerLineCount + len(tacticalPanelLines) + len(alertPanelLines) > totalLines {
+			totalLines = headerLineCount + len(tacticalPanelLines) + len(alertPanelLines)
 		}
 		
-		// Build output by overlaying panel on right side at fixed position
+		// Build output by overlaying panels on right side at fixed position
 		var result []string
 		for i := 0; i < totalLines; i++ {
 			var line string
@@ -534,10 +709,16 @@ func (m model) View() string {
 					}
 				}
 				
-				// Overlay panel line (adjusted for header offset)
-				panelLineIndex := i - headerLineCount
-				if panelLineIndex >= 0 && panelLineIndex < len(panelLines) {
-					line += panelLines[panelLineIndex]
+				// Overlay tactical panel lines (adjusted for header offset)
+				tacticalPanelLineIndex := i - headerLineCount
+				if tacticalPanelLineIndex >= 0 && tacticalPanelLineIndex < len(tacticalPanelLines) {
+					line += tacticalPanelLines[tacticalPanelLineIndex]
+				} else {
+					// Overlay alert panel lines (after tactical panel)
+					alertPanelLineIndex := i - alertPanelStartLine
+					if alertPanelLineIndex >= 0 && alertPanelLineIndex < len(alertPanelLines) {
+						line += alertPanelLines[alertPanelLineIndex]
+					}
 				}
 			}
 			
@@ -2244,6 +2425,8 @@ type refreshMsg struct{}
 
 type activitySampleMsg struct{}
 
+type pulseTimerMsg struct{}
+
 type errMsg struct {
 	err error
 }
@@ -2274,6 +2457,12 @@ func sampleActivityCmd() tea.Msg {
 	return activitySampleMsg{}
 }
 
+// pulseTimerCmd triggers pulse animation updates for alert panel
+func pulseTimerCmd() tea.Msg {
+	time.Sleep(500 * time.Millisecond) // Pulse every 500ms
+	return pulseTimerMsg{}
+}
+
 func main() {
 	// Create spinner
 	s := spinner.New()
@@ -2299,6 +2488,8 @@ func main() {
 		view:            defaultView,
 		activityTracker: NewActivityTracker(), // Initialize activity tracker
 		expandedSubnets: make(map[string]bool), // Initialize expanded subnets map
+		alertManager:    alerts.NewAlertManager(5), // Max 5 visible alerts
+		previousAgents:  make(map[string]Agent), // Initialize agent tracking map
 	}
 
 	// Create and run program with alt screen
