@@ -705,10 +705,13 @@ func (m model) View() string {
 	}
 	
 	// Now add alert panel overlay in the footer area (bottom right)
+	// Position slightly left of tactical panel to accommodate wider width
 	alertPanel := m.renderAlertPanel()
 	if alertPanel != "" {
-		alertPanelWidth := 49
-		alertPanelX := m.termWidth - alertPanelWidth
+		// Alert panel is wider (49 chars), position it about 10 chars left of tactical panel
+		tacticalPanelWidth := 37
+		alertPanelOffset := 10 // Offset from tactical panel position
+		alertPanelX := m.termWidth - tacticalPanelWidth - alertPanelOffset
 		if alertPanelX < 100 {
 			alertPanelX = 100
 		}
