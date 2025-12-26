@@ -70,19 +70,19 @@ func (am *AlertManager) AddAlert(alertType AlertType, category AlertCategory, me
 	am.mu.Lock()
 	defer am.mu.Unlock()
 
-	// Set TTL based on alert type
+	// Set TTL based on alert type (increased by 5 seconds)
 	var ttl time.Duration
 	switch alertType {
 	case AlertCritical:
-		ttl = 30 * time.Second
+		ttl = 35 * time.Second // Was 30s
 	case AlertWarning:
-		ttl = 20 * time.Second
+		ttl = 25 * time.Second // Was 20s
 	case AlertSuccess:
-		ttl = 15 * time.Second
+		ttl = 20 * time.Second // Was 15s
 	case AlertInfo:
-		ttl = 10 * time.Second
+		ttl = 15 * time.Second // Was 10s
 	case AlertNotice:
-		ttl = 8 * time.Second
+		ttl = 13 * time.Second // Was 8s
 	}
 
 	alert := Alert{
