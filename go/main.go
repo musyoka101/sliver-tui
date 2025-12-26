@@ -6,87 +6,26 @@ import (
 	"os"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	
+	"github.com/musyoka101/sliver-graphs/internal/client"
+	"github.com/musyoka101/sliver-graphs/internal/config"
+	"github.com/musyoka101/sliver-graphs/internal/models"
+	"github.com/musyoka101/sliver-graphs/internal/tracking"
+	"github.com/musyoka101/sliver-graphs/internal/tree"
 )
 
-// Global tracking for agent changes
-var (
-	agentTracker     = make(map[string]time.Time) // ID -> first seen time
-	trackerMutex     sync.RWMutex
-	newAgentTimeout  = 5 * time.Minute // Mark as NEW if seen < 5 minutes ago
-	lostAgents       = make(map[string]Agent)
-	lostAgentTimeout = 5 * time.Minute
-)
+// Type aliases for tracking package types
+type ActivitySample = tracking.ActivitySample
+type ActivityTracker = tracking.ActivityTracker
 
-// ActivitySample represents a single data point in time
-type ActivitySample struct {
-	Timestamp       time.Time
-	SessionsCount   int
-	BeaconsCount    int
-	NewCount        int
-	PrivilegedCount int
-}
-
-// ActivityTracker tracks activity over time (12-hour rolling window)
-type ActivityTracker struct {
-	StartTime       time.Time
-	Samples         []ActivitySample
-	SampleInterval  time.Duration // 10 minutes
-	MaxSamples      int           // 72 samples (12 hours)
-	mutex           sync.RWMutex
-}
-
-// NewActivityTracker creates a new activity tracker
-func NewActivityTracker() *ActivityTracker {
-	return &ActivityTracker{
-		StartTime:      time.Now(),
-		Samples:        []ActivitySample{},
-		SampleInterval: 10 * time.Minute,
-		MaxSamples:     72, // 12 hours at 10-minute intervals
-	}
-}
-
-// AddSample adds a new activity sample (rolling window)
-func (at *ActivityTracker) AddSample(sessions, beacons, newAgents, privileged int) {
-	at.mutex.Lock()
-	defer at.mutex.Unlock()
-	
-	sample := ActivitySample{
-		Timestamp:       time.Now(),
-		SessionsCount:   sessions,
-		BeaconsCount:    beacons,
-		NewCount:        newAgents,
-		PrivilegedCount: privileged,
-	}
-	
-	at.Samples = append(at.Samples, sample)
-	
-	// Keep only last MaxSamples (rolling window)
-	if len(at.Samples) > at.MaxSamples {
-		at.Samples = at.Samples[len(at.Samples)-at.MaxSamples:]
-	}
-}
-
-// GetSamples returns a copy of all samples (thread-safe)
-func (at *ActivityTracker) GetSamples() []ActivitySample {
-	at.mutex.RLock()
-	defer at.mutex.RUnlock()
-	
-	samplesCopy := make([]ActivitySample, len(at.Samples))
-	copy(samplesCopy, at.Samples)
-	return samplesCopy
-}
-
-// GetSessionDuration returns how long the tracker has been running
-func (at *ActivityTracker) GetSessionDuration() time.Duration {
-	return time.Since(at.StartTime)
-}
+// NewActivityTracker is provided by tracking package
+var NewActivityTracker = tracking.NewActivityTracker
 
 // sampleCurrentActivity samples the current agent state and adds to tracker
 func (m *model) sampleCurrentActivity() {
@@ -94,26 +33,8 @@ func (m *model) sampleCurrentActivity() {
 		return
 	}
 	
-	// Count metrics from current agents
-	newCount := 0
-	privilegedCount := 0
-	
-	for _, agent := range m.agents {
-		if agent.IsNew {
-			newCount++
-		}
-		if agent.IsPrivileged {
-			privilegedCount++
-		}
-	}
-	
-	// Add sample to tracker
-	m.activityTracker.AddSample(
-		m.stats.Sessions,
-		m.stats.Beacons,
-		newCount,
-		privilegedCount,
-	)
+	// Use the tracking package's SampleCurrentActivity method
+	m.activityTracker.SampleCurrentActivity(m.agents, m.stats)
 }
 
 // updateSubnetOrder builds ordered list of subnets for numbered shortcuts
@@ -151,46 +72,11 @@ func (m *model) updateSubnetOrder() {
 	sort.Strings(m.subnetOrder)
 }
 
-// Agent represents a Sliver agent
-type Agent struct {
-	ID            string
-	Hostname      string
-	Username      string
-	OS            string
-	Transport     string
-	RemoteAddress string
-	IsSession     bool
-	IsPrivileged  bool
-	IsDead        bool
-	IsNew         bool      // Newly discovered (< 5 min)
-	FirstSeen     time.Time // When first discovered
-	ProxyURL      string    // Non-empty if pivoted through another agent
-	ParentID      string    // ID of parent agent (if pivoted)
-	Children      []Agent   // Child agents (pivoted through this one)
-	
-	// Additional fields from protobuf
-	PID           int32     // Process ID
-	Filename      string    // Process filename/path (Argv[0])
-	Arch          string    // Architecture (x64, x86, arm64, etc.)
-	Version       string    // Implant version
-	ActiveC2      string    // Active C2 server URL
-	Interval      int64     // Beacon check-in interval (nanoseconds)
-	Jitter        int64     // Beacon jitter
-	NextCheckin   int64     // Next beacon check-in time (unix timestamp)
-	TasksCount    int64     // Total tasks queued
-	TasksCompleted int64    // Tasks completed
-	LastCheckin   int64     // Last check-in time (unix timestamp)
-	Evasion       bool      // Evasion mode enabled
-	Burned        bool      // Marked as compromised
-}
+// Agent is an alias to models.Agent
+type Agent = models.Agent
 
-// Stats holds statistics
-type Stats struct {
-	Sessions    int
-	Beacons     int
-	Hosts       int
-	Compromised int
-}
+// Stats is an alias to models.Stats
+type Stats = models.Stats
 
 // Model represents the application state
 type model struct {
@@ -205,9 +91,9 @@ type model struct {
 	termHeight      int  // Terminal height
 	ready           bool // Viewport initialized
 	themeIndex      int  // Current theme index
-	theme           Theme // Current theme
+	theme           config.Theme // Current theme
 	viewIndex       int  // Current view index
-	view            View // Current view
+	view            config.View // Current view
 	activityTracker *ActivityTracker // Activity tracking over time
 	expandedSubnets map[string]bool  // Track which subnets are expanded
 	subnetOrder     []string         // Track subnet display order for numbered shortcuts
@@ -239,26 +125,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "d":
 			// Toggle to dashboard view directly
 			m.viewIndex = 2 // Dashboard is index 2
-			m.view = GetView(m.viewIndex)
+			m.view = config.GetView(m.viewIndex)
 			if m.ready {
 				m.updateViewportContent()
 			}
 			return m, nil
 		
-		// Theme switching
+		// config.Theme switching
 		case "t":
-			m.themeIndex = (m.themeIndex + 1) % GetThemeCount()
-			m.theme = GetTheme(m.themeIndex)
+			m.themeIndex = (m.themeIndex + 1) % config.GetThemeCount()
+			m.theme = config.GetTheme(m.themeIndex)
 			// Update viewport content with new theme
 			if m.ready {
 				m.updateViewportContent()
 			}
 			return m, nil
 		
-		// View switching
+		// config.View switching
 		case "v":
-			m.viewIndex = (m.viewIndex + 1) % GetViewCount()
-			m.view = GetView(m.viewIndex)
+			m.viewIndex = (m.viewIndex + 1) % config.GetViewCount()
+			m.view = config.GetView(m.viewIndex)
 			// Update viewport content with new view
 			if m.ready {
 				m.updateViewportContent()
@@ -541,13 +427,11 @@ func (m model) View() string {
 		m.stats.Sessions, m.stats.Beacons, m.stats.Compromised)
 	footerLines = append(footerLines, statsStyle.Render(statsLine))
 	
-	trackerMutex.RLock()
-	lostCount := len(lostAgents)
-	trackerMutex.RUnlock()
+	lostCount := tracking.GetLostAgentsCount()
 	
 	if lostCount > 0 {
 		lostLine := fmt.Sprintf("⚠️  Recently Lost: %d (displayed for %d min)",
-			lostCount, int(lostAgentTimeout.Minutes()))
+			lostCount, int(tracking.GetLostAgentTimeout().Minutes()))
 		footerLines = append(footerLines, lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#ff9900")).
 			Italic(true).
@@ -1880,7 +1764,7 @@ func max(a, b int) int {
 // updateViewportContent updates the viewport with the current agent list
 func (m *model) updateViewportContent() {
 	// Check if we're in dashboard view
-	if m.view.Type == ViewTypeDashboard {
+	if m.view.Type == config.ViewTypeDashboard {
 		m.viewport.SetContent(m.renderDashboard())
 		return
 	}
@@ -1901,7 +1785,7 @@ func (m *model) updateViewportContent() {
 	
 	var contentLines []string
 	
-	if m.view.Type == ViewTypeTree {
+	if m.view.Type == config.ViewTypeTree {
 		// Tree view: Logo on left, agents on right with connectors from logo area
 		logoStart := 0 // Start logo from the top
 		if len(agentLines) > len(logo) {
@@ -1955,11 +1839,212 @@ func (m *model) updateViewportContent() {
 	m.viewport.SetContent(strings.Join(contentLines, "\n"))
 }
 
+// renderAgentInView renders an agent based on the current view type
+func (m model) renderAgentInView(agent Agent, viewType config.ViewType) []string {
+	switch viewType {
+	case config.ViewTypeBox:
+		return m.renderAgentBox(agent)
+	case config.ViewTypeTree:
+		fallthrough
+	default:
+		return m.renderAgentLine(agent)
+	}
+}
+
+// renderAgentBox renders an agent in a compact box style
+func (m model) renderAgentBox(agent Agent) []string {
+	var lines []string
+
+	// Status icon
+	var statusIcon string
+	var statusColor lipgloss.Color
+
+	if agent.IsDead {
+		statusIcon = "💀"
+		statusColor = m.theme.DeadColor
+	} else if agent.IsSession {
+		statusIcon = "◆"
+		statusColor = m.theme.SessionColor
+	} else {
+		statusIcon = "◇"
+		statusColor = m.theme.BeaconColor
+	}
+
+	// OS icon
+	osIcon := "💻"
+	if strings.Contains(strings.ToLower(agent.OS), "windows") {
+		if agent.IsSession {
+			osIcon = "🖥️"
+		} else {
+			osIcon = "💻"
+		}
+	} else if strings.Contains(strings.ToLower(agent.OS), "linux") {
+		osIcon = "🐧"
+	}
+
+	// Username color (dead overrides all)
+	var usernameColor lipgloss.Color
+	if agent.IsDead {
+		usernameColor = m.theme.DeadColor
+	} else if agent.IsPrivileged {
+		usernameColor = m.theme.PrivilegedUser
+	} else {
+		usernameColor = m.theme.NormalUser
+	}
+
+	// Privilege badge
+	privBadge := ""
+	if agent.IsPrivileged && !agent.IsDead {
+		privBadge = " 💎"
+	}
+
+	// NEW badge
+	newBadge := ""
+	if agent.IsNew && !agent.IsDead {
+		newBadge = " " + lipgloss.NewStyle().
+			Foreground(m.theme.NewBadgeColor).
+			Bold(true).
+			Render("✨")
+	}
+
+	// Build box content
+	// Line 1: status icon, OS icon, username@hostname, badges
+	userInfo := fmt.Sprintf("%s %s  %s%s%s",
+		lipgloss.NewStyle().Foreground(statusColor).Render(statusIcon),
+		osIcon,
+		lipgloss.NewStyle().Foreground(usernameColor).Bold(true).Render(fmt.Sprintf("%s@%s", agent.Username, agent.Hostname)),
+		privBadge,
+		newBadge,
+	)
+
+	// Line 2: ID, IP, transport
+	detailsInfo := fmt.Sprintf("%s | %s | %s",
+		lipgloss.NewStyle().Foreground(m.theme.TacticalMuted).Render(agent.ID[:8]),
+		lipgloss.NewStyle().Foreground(m.theme.TacticalMuted).Render(agent.RemoteAddress),
+		lipgloss.NewStyle().Foreground(m.theme.TacticalValue).Render(agent.Transport),
+	)
+
+	// Combine both lines
+	content := userInfo + "\n" + detailsInfo
+
+	// Border color
+	borderColor := m.theme.TacticalBorder
+	if agent.IsDead {
+		borderColor = m.theme.DeadColor
+	}
+
+	// Use lipgloss border style for proper continuous borders
+	boxStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(borderColor).
+		Padding(0, 1)
+
+	// Render the box
+	boxed := boxStyle.Render(content)
+	
+	// Split into lines for return
+	lines = strings.Split(boxed, "\n")
+
+	return lines
+}
+
+// renderAgentTreeWithView renders agent tree with view-specific formatting
+func (m model) renderAgentTreeWithView(agent Agent, depth int, viewType config.ViewType) []string {
+	return m.renderAgentTreeWithViewAndContext(agent, depth, viewType, false, false)
+}
+
+// renderAgentTreeWithViewAndContext renders agent tree with context about siblings
+func (m model) renderAgentTreeWithViewAndContext(agent Agent, depth int, viewType config.ViewType, hasNextSibling bool, isLastChild bool) []string {
+	var lines []string
+
+	// Render current agent based on view type
+	agentLines := m.renderAgentInView(agent, viewType)
+
+	if viewType == config.ViewTypeBox {
+		// Box view: use vertical connectors for parent-child relationships
+		if depth > 0 {
+			// Child agent - add connector from parent
+			indent := strings.Repeat("   ", depth-1)
+			connectorColor := m.theme.TacticalBorder
+			
+			// Add vertical line and L-shaped connector before the box
+			lines = append(lines, indent+lipgloss.NewStyle().Foreground(connectorColor).Render("   │"))
+			lines = append(lines, indent+lipgloss.NewStyle().Foreground(connectorColor).Render("   ╰──▶ ")+agentLines[0])
+			
+			// Indent remaining box lines
+			for i := 1; i < len(agentLines); i++ {
+				lines = append(lines, indent+"        "+agentLines[i])
+			}
+		} else {
+			// Root level - boxes on the right, vertical line with arrows on left
+			connectorColor := m.theme.TacticalBorder
+			
+			// Calculate which line is the middle of the box (for arrow placement)
+			middleLine := 1 // Second line (0-indexed) for 4-line box
+			
+			for i, boxLine := range agentLines {
+				if i == middleLine {
+					// Middle line: add T-junction with arrow pointing right
+					if !isLastChild {
+						connector := lipgloss.NewStyle().Foreground(connectorColor).Render("├──────────────▶ ")
+						lines = append(lines, connector+boxLine)
+					} else {
+						// Last box: use corner
+						connector := lipgloss.NewStyle().Foreground(connectorColor).Render("╰──────────────▶ ")
+						lines = append(lines, connector+boxLine)
+					}
+				} else {
+					// Other lines: just vertical line or spaces
+					if !isLastChild || i < middleLine {
+						vline := lipgloss.NewStyle().Foreground(connectorColor).Render("│                ")
+						lines = append(lines, vline+boxLine)
+					} else {
+						// After the corner on last box, use spaces
+						lines = append(lines, "                 "+boxLine)
+					}
+				}
+			}
+		}
+	} else {
+		// Tree view: use existing tree connector logic
+		indent := strings.Repeat("  ", depth)
+
+		if depth > 0 {
+			// Add tree connector for child agents
+			connector := lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#6272a4")).
+				Render("  ╰─")
+
+			// First line gets the connector
+			agentLines[0] = indent + connector + agentLines[0]
+			// Second line gets matching indentation
+			agentLines[1] = indent + "    " + agentLines[1]
+		}
+
+		// Add both lines
+		lines = append(lines, agentLines...)
+	}
+
+	// Add spacing between agents at root level (only for Tree view)
+	if depth == 0 && len(agent.Children) == 0 && viewType == config.ViewTypeTree {
+		lines = append(lines, "")
+	}
+
+	// Recursively render children
+	for i, child := range agent.Children {
+		hasNext := i < len(agent.Children)-1
+		childLines := m.renderAgentTreeWithViewAndContext(child, depth+1, viewType, hasNext, !hasNext)
+		lines = append(lines, childLines...)
+	}
+
+	return lines
+}
+
 func (m model) renderAgents() []string {
 	var lines []string
 
 	// Build hierarchical tree
-	tree := buildAgentTree(m.agents)
+	tree := tree.BuildAgentTree(m.agents)
 
 	// Render tree with indentation using current view
 	for i, agent := range tree {
@@ -2149,123 +2234,6 @@ func (m model) renderAgentLine(agent Agent) []string {
 	return lines
 }
 
-// buildAgentTree organizes agents into a hierarchical tree based on pivot relationships
-func buildAgentTree(agents []Agent) []Agent {
-	// Create maps for quick lookup
-	agentMap := make(map[string]*Agent)
-	for i := range agents {
-		agentMap[agents[i].ID] = &agents[i]
-	}
-
-	// Identify parent-child relationships
-	// ProxyURL format can be like "socks5://agent-id" or contain agent ID
-	var rootAgents []Agent
-	
-	for i := range agents {
-		if agents[i].ProxyURL == "" {
-			// This is a root agent (directly connected to C2)
-			rootAgents = append(rootAgents, agents[i])
-		} else {
-			// This agent is pivoted through another
-			// Try to extract parent ID from ProxyURL
-			agents[i].ParentID = extractParentID(agents[i].ProxyURL, agentMap)
-		}
-	}
-
-	// Build tree structure
-	for i := range rootAgents {
-		rootAgents[i].Children = findChildren(rootAgents[i].ID, agents)
-	}
-
-	// If no root agents found, return all agents as roots
-	if len(rootAgents) == 0 {
-		return agents
-	}
-
-	return rootAgents
-}
-
-// extractParentID tries to extract parent agent ID from ProxyURL
-func extractParentID(proxyURL string, agentMap map[string]*Agent) string {
-	// ProxyURL might be in format like: "socks5://127.0.0.1:9050"
-	// For now, we'll look for agents with matching connection info
-	// This is a simplified approach - real implementation might need protocol-specific parsing
-	for id := range agentMap {
-		if strings.Contains(proxyURL, id) {
-			return id
-		}
-	}
-	return ""
-}
-
-// findChildren recursively finds all children of a given parent agent
-func findChildren(parentID string, allAgents []Agent) []Agent {
-	var children []Agent
-	
-	for _, agent := range allAgents {
-		if agent.ParentID == parentID {
-			// This agent is a child of parentID
-			child := agent
-			// Recursively find this child's children
-			child.Children = findChildren(child.ID, allAgents)
-			children = append(children, child)
-		}
-	}
-	
-	return children
-}
-
-// trackAgentChanges updates the tracking maps for new/lost agents
-func trackAgentChanges(agents []Agent) []Agent {
-	trackerMutex.Lock()
-	defer trackerMutex.Unlock()
-
-	now := time.Now()
-	currentAgentIDs := make(map[string]bool)
-
-	// Process current agents
-	for i := range agents {
-		agentID := agents[i].ID
-		currentAgentIDs[agentID] = true
-
-		// Check if this is a new agent
-		if firstSeen, exists := agentTracker[agentID]; exists {
-			agents[i].FirstSeen = firstSeen
-			agents[i].IsNew = now.Sub(firstSeen) < newAgentTimeout
-		} else {
-			// First time seeing this agent
-			agentTracker[agentID] = now
-			agents[i].FirstSeen = now
-			agents[i].IsNew = true
-		}
-	}
-
-	// Find lost agents (previously tracked but not in current list)
-	for agentID, firstSeen := range agentTracker {
-		if !currentAgentIDs[agentID] {
-			// This agent is missing, add to lost agents if not already there
-			if _, exists := lostAgents[agentID]; !exists {
-				// Create a lost agent entry (we don't have full data)
-				lostAgents[agentID] = Agent{
-					ID:        agentID,
-					FirstSeen: firstSeen,
-					IsDead:    true,
-				}
-			}
-		}
-	}
-
-	// Clean up old lost agents
-	for agentID, agent := range lostAgents {
-		if now.Sub(agent.FirstSeen) > lostAgentTimeout {
-			delete(lostAgents, agentID)
-			delete(agentTracker, agentID)
-		}
-	}
-
-	return agents
-}
-
 // Messages
 type agentsMsg struct {
 	agents []Agent
@@ -2286,13 +2254,13 @@ func fetchAgentsCmd() tea.Msg {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	agents, stats, err := FetchAgents(ctx)
+	agents, stats, err := client.FetchAgents(ctx)
 	if err != nil {
 		return errMsg{err: err}
 	}
 
 	// Track agent changes (NEW badges, lost agents)
-	agents = trackAgentChanges(agents)
+	agents = tracking.TrackAgentChanges(agents)
 
 	return agentsMsg{
 		agents: agents,
@@ -2312,11 +2280,11 @@ func main() {
 	s.Spinner = spinner.Dot
 	
 	// Initialize with default theme (index 0)
-	defaultTheme := GetTheme(0)
+	defaultTheme := config.GetTheme(0)
 	s.Style = lipgloss.NewStyle().Foreground(defaultTheme.TitleColor)
 	
 	// Initialize with default view (index 0)
-	defaultView := GetView(0)
+	defaultView := config.GetView(0)
 
 	// Initialize model with default terminal size as fallback
 	m := model{

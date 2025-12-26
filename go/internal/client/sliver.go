@@ -1,4 +1,4 @@
-package main
+package client
 
 import (
 	"context"
@@ -14,6 +14,7 @@ import (
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/commonpb"
 	"github.com/bishopfox/sliver/protobuf/rpcpb"
+	"github.com/musyoka101/sliver-graphs/internal/models"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
@@ -179,14 +180,14 @@ func NewSliverClient(config *SliverConfig) *SliverClient {
 	}
 }
 
-// ConvertToAgents converts Sliver sessions and beacons to our Agent type
-func ConvertToAgents(sessions []*clientpb.Session, beacons []*clientpb.Beacon) ([]Agent, Stats) {
-	var agents []Agent
+// ConvertToAgents converts Sliver sessions and beacons to our models.Agent type
+func ConvertToAgents(sessions []*clientpb.Session, beacons []*clientpb.Beacon) ([]models.Agent, models.Stats) {
+	var agents []models.Agent
 	hostMap := make(map[string]bool)
 
 	// Convert sessions
 	for _, s := range sessions {
-		agent := Agent{
+		agent := models.Agent{
 			ID:            s.ID,
 			Hostname:      s.Hostname,
 			Username:      s.Username,
@@ -229,7 +230,7 @@ func ConvertToAgents(sessions []*clientpb.Session, beacons []*clientpb.Beacon) (
 			}
 		}
 		
-		agent := Agent{
+		agent := models.Agent{
 			ID:            b.ID,
 			Hostname:      b.Hostname,
 			Username:      b.Username,
@@ -259,7 +260,7 @@ func ConvertToAgents(sessions []*clientpb.Session, beacons []*clientpb.Beacon) (
 		hostMap[b.Hostname] = true
 	}
 
-	stats := Stats{
+	stats := models.Stats{
 		Sessions:    len(sessions),
 		Beacons:     len(beacons),
 		Hosts:       len(hostMap),
@@ -288,17 +289,17 @@ func isPrivileged(username, os string) bool {
 }
 
 // FetchAgents connects to Sliver and fetches all agents
-func FetchAgents(ctx context.Context) ([]Agent, Stats, error) {
+func FetchAgents(ctx context.Context) ([]models.Agent, models.Stats, error) {
 	// Find config file
 	configPath, err := FindConfigFile()
 	if err != nil {
-		return nil, Stats{}, fmt.Errorf("config not found: %w", err)
+		return nil, models.Stats{}, fmt.Errorf("config not found: %w", err)
 	}
 
 	// Load config
 	config, err := LoadConfig(configPath)
 	if err != nil {
-		return nil, Stats{}, fmt.Errorf("failed to load config: %w", err)
+		return nil, models.Stats{}, fmt.Errorf("failed to load config: %w", err)
 	}
 
 	// Create client
@@ -309,22 +310,22 @@ func FetchAgents(ctx context.Context) ([]Agent, Stats, error) {
 	defer cancel()
 
 	if err := client.Connect(connectCtx); err != nil {
-		return nil, Stats{}, fmt.Errorf("connection failed: %w", err)
+		return nil, models.Stats{}, fmt.Errorf("connection failed: %w", err)
 	}
 	defer client.Close()
 
 	// Fetch sessions and beacons
 	sessions, err := client.GetSessions(ctx)
 	if err != nil {
-		return nil, Stats{}, fmt.Errorf("failed to get sessions: %w", err)
+		return nil, models.Stats{}, fmt.Errorf("failed to get sessions: %w", err)
 	}
 
 	beacons, err := client.GetBeacons(ctx)
 	if err != nil {
-		return nil, Stats{}, fmt.Errorf("failed to get beacons: %w", err)
+		return nil, models.Stats{}, fmt.Errorf("failed to get beacons: %w", err)
 	}
 
-	// Convert to our Agent type
+	// Convert to our models.Agent type
 	agents, stats := ConvertToAgents(sessions, beacons)
 
 	return agents, stats, nil
