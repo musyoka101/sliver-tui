@@ -24,7 +24,10 @@ const (
 	CategoryAgentDisconnected
 	CategoryBeaconLate
 	CategoryBeaconMissed
+	CategoryBeaconTaskQueued   // New task assigned to beacon
+	CategoryBeaconTaskComplete // Task execution finished
 	CategoryPrivilegedAccess
+	CategoryPrivilegedSessionOpened // Privileged session initialized
 	CategorySessionOpened
 	CategorySessionClosed
 	CategoryC2Connected
@@ -40,6 +43,7 @@ type Alert struct {
 	Category  AlertCategory
 	Message   string
 	AgentName string
+	Details   string        // Additional details (e.g., "3→4 pending")
 	Timestamp time.Time
 	TTL       time.Duration // How long to display
 	IsNew     bool          // For animation purposes
@@ -67,6 +71,11 @@ func NewAlertManager(maxAlerts int) *AlertManager {
 
 // AddAlert adds a new alert to the queue
 func (am *AlertManager) AddAlert(alertType AlertType, category AlertCategory, message, agentName string) {
+	am.AddAlertWithDetails(alertType, category, message, agentName, "")
+}
+
+// AddAlertWithDetails adds a new alert with additional details to the queue
+func (am *AlertManager) AddAlertWithDetails(alertType AlertType, category AlertCategory, message, agentName, details string) {
 	am.mu.Lock()
 	defer am.mu.Unlock()
 
@@ -84,6 +93,16 @@ func (am *AlertManager) AddAlert(alertType AlertType, category AlertCategory, me
 	case AlertNotice:
 		ttl = 13 * time.Second // Was 8s
 	}
+	
+	// Category-specific TTL overrides for important events
+	switch category {
+	case CategoryAgentConnected:
+		ttl = 50 * time.Second // Extended: 20s + 30s = 50s
+	case CategoryPrivilegedAccess:
+		ttl = 50 * time.Second // Extended: 20s + 30s = 50s
+	case CategoryPrivilegedSessionOpened:
+		ttl = 50 * time.Second // Extended: privileged sessions are important
+	}
 
 	alert := Alert{
 		ID:        generateID(),
@@ -91,6 +110,7 @@ func (am *AlertManager) AddAlert(alertType AlertType, category AlertCategory, me
 		Category:  category,
 		Message:   message,
 		AgentName: agentName,
+		Details:   details,
 		Timestamp: time.Now(),
 		TTL:       ttl,
 		IsNew:     true,
@@ -216,8 +236,14 @@ func (a Alert) GetLabel() string {
 		return "CHECK-IN LATE"
 	case CategoryBeaconMissed:
 		return "BEACON MISSED"
+	case CategoryBeaconTaskQueued:
+		return "TASK QUEUED"
+	case CategoryBeaconTaskComplete:
+		return "TASK COMPLETE"
 	case CategoryPrivilegedAccess:
 		return "PRIV ESCALATED"
+	case CategoryPrivilegedSessionOpened:
+		return "PRIVILEGED SESSION INIT"
 	case CategorySessionOpened:
 		return "SESSION INIT"
 	case CategorySessionClosed:

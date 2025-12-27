@@ -372,11 +372,22 @@ func (m *model) detectAgentChanges(newAgents []Agent) {
 		if _, exists := m.previousAgents[agent.ID]; !exists {
 			// New agent connected
 			alertType := alerts.AlertSuccess
-			if agent.IsPrivileged {
-				alertType = alerts.AlertSuccess // Privileged access is success
-				m.alertManager.AddAlert(alertType, alerts.CategoryPrivilegedAccess, "Privileged access gained", agent.Hostname)
+			
+			// Determine appropriate alert based on agent type and privilege
+			if agent.IsSession {
+				// Session-specific alerts
+				if agent.IsPrivileged {
+					m.alertManager.AddAlert(alertType, alerts.CategoryPrivilegedSessionOpened, "Privileged session opened", agent.Hostname)
+				} else {
+					m.alertManager.AddAlert(alertType, alerts.CategorySessionOpened, "Session opened", agent.Hostname)
+				}
 			} else {
-				m.alertManager.AddAlert(alertType, alerts.CategoryAgentConnected, "New agent connected", agent.Hostname)
+				// Beacon-specific alerts
+				if agent.IsPrivileged {
+					m.alertManager.AddAlert(alertType, alerts.CategoryAgentConnected, "Privileged beacon connected", agent.Hostname)
+				} else {
+					m.alertManager.AddAlert(alertType, alerts.CategoryAgentConnected, "Beacon connected", agent.Hostname)
+				}
 			}
 		}
 	}
@@ -399,14 +410,44 @@ func (m *model) detectAgentChanges(newAgents []Agent) {
 		}
 	}
 
-	// Detect session events
+	// Detect session events and privilege changes
 	for id, newAgent := range newAgentMap {
 		if oldAgent, exists := m.previousAgents[id]; exists {
-			// Check if session state changed
+			// Check if privilege escalated (wasn't privileged before, is now)
+			if newAgent.IsPrivileged && !oldAgent.IsPrivileged {
+				m.alertManager.AddAlert(alerts.AlertSuccess, alerts.CategoryPrivilegedAccess, "Privilege escalated", newAgent.Hostname)
+			}
+			
+			// Check if session state changed (beacon converted to session)
 			if newAgent.IsSession && !oldAgent.IsSession {
-				m.alertManager.AddAlert(alerts.AlertInfo, alerts.CategorySessionOpened, "Session opened", newAgent.Hostname)
+				m.alertManager.AddAlert(alerts.AlertInfo, alerts.CategorySessionOpened, "Beacon upgraded to session", newAgent.Hostname)
 			} else if !newAgent.IsSession && oldAgent.IsSession {
 				m.alertManager.AddAlert(alerts.AlertInfo, alerts.CategorySessionClosed, "Session closed", newAgent.Hostname)
+			}
+		}
+	}
+
+	// Detect beacon task changes (queued/completed)
+	for id, newAgent := range newAgentMap {
+		if !newAgent.IsSession { // Only check beacons
+			if oldAgent, exists := m.previousAgents[id]; exists {
+				// Detect new tasks queued
+				if newAgent.TasksCount > oldAgent.TasksCount {
+					pendingTasks := newAgent.TasksCount - newAgent.TasksCompleted
+					oldPendingTasks := oldAgent.TasksCount - oldAgent.TasksCompleted
+					details := fmt.Sprintf("(%d→%d pending)", oldPendingTasks, pendingTasks)
+					m.alertManager.AddAlertWithDetails(alerts.AlertInfo, alerts.CategoryBeaconTaskQueued, 
+						"Task queued", newAgent.Hostname, details)
+				}
+				
+				// Detect tasks completed
+				if newAgent.TasksCompleted > oldAgent.TasksCompleted {
+					completedCount := newAgent.TasksCompleted
+					totalCount := newAgent.TasksCount
+					details := fmt.Sprintf("(%d/%d done)", completedCount, totalCount)
+					m.alertManager.AddAlertWithDetails(alerts.AlertSuccess, alerts.CategoryBeaconTaskComplete, 
+						"Task completed", newAgent.Hostname, details)
+				}
 			}
 		}
 	}
@@ -505,11 +546,17 @@ func (m model) renderAlertPanel() string {
 		}
 
 		// Single line format: ║█║ 19:45 PRIV ESCALATED m3dc
+		// Or with details: ║█║ 19:45 TASK QUEUED m3dc (3→4)
 		alertLine := fmt.Sprintf("%s %s %s %s",
 			lipgloss.NewStyle().Foreground(textColor).Bold(true).Render(icon),
 			lipgloss.NewStyle().Foreground(m.theme.TacticalMuted).Render(timeStr),
 			lipgloss.NewStyle().Foreground(textColor).Bold(true).Render(label),
 			lipgloss.NewStyle().Foreground(m.theme.TacticalValue).Render(agentName))
+		
+		// Add details if present (e.g., task counts)
+		if alert.Details != "" {
+			alertLine += lipgloss.NewStyle().Foreground(m.theme.TacticalMuted).Render(" " + alert.Details)
+		}
 
 		lines = append(lines, alertLine)
 	}
@@ -611,27 +658,29 @@ func (m model) View() string {
 	lostCount := tracking.GetLostAgentsCount()
 	
 	if lostCount > 0 {
-		lostLine := fmt.Sprintf("⚠️  Recently Lost: %d (displayed for %d min)",
+		lostLine := fmt.Sprintf("  ⚠️  Recently Lost: %d (displayed for %d min)",
 			lostCount, int(tracking.GetLostAgentTimeout().Minutes()))
 		footerLines = append(footerLines, lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#ff9900")).
 			Italic(true).
+			Padding(0, 1).
 			Render(lostLine))
+		footerLines = append(footerLines, "") // Add empty line for spacing
 	}
-	
-	footerLines = append(footerLines, "")
 	
 	// Show number buffer indicator if user is typing a subnet number
 	if len(m.numberBuffer) > 0 {
 		bufferStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#f1fa8c")). // Yellow
-			Bold(true)
-		bufferText := fmt.Sprintf("  > Subnet #%s_ (press Enter to toggle, Esc to cancel)", m.numberBuffer)
+			Bold(true).
+			Padding(0, 1)
+		bufferText := fmt.Sprintf("> Subnet #%s_ (press Enter to toggle, Esc to cancel)", m.numberBuffer)
 		footerLines = append(footerLines, bufferStyle.Render(bufferText))
+		footerLines = append(footerLines, "") // Add empty line for spacing
 	}
 	
-	helpStyle := lipgloss.NewStyle().Foreground(m.theme.HelpColor)
-	helpText := "  Press 'r' to refresh  │  't' to change theme  │  'v' to change view  │  'd' for dashboard  │  Type subnet # + Enter to expand  │  'e' expand all  │  '↑↓' or 'j/k' to scroll  │  'q' to quit"
+	helpStyle := lipgloss.NewStyle().Foreground(m.theme.HelpColor).Padding(0, 1)
+	helpText := "Press 'r' to refresh  │  't' to change theme  │  'v' to change view  │  'd' for dashboard  │  Type subnet # + Enter to expand  │  'e' expand all  │  '↑↓' or 'j/k' to scroll  │  'q' to quit"
 	footerLines = append(footerLines, helpStyle.Render(helpText))
 	footerLines = append(footerLines, "")
 	
