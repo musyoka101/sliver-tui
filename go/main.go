@@ -570,10 +570,14 @@ func (m model) renderAlertPanel() string {
 
 		// Single line format with expanded width: ║█║ 19:45 PRIVILEGED SESSION ACQUIRED hostname
 		// Or with details: ║█║ 19:45 TASK QUEUED hostname (3→4 pending)
+		// Pad label to fixed width (28 chars) so hostnames align in a column
+		labelWidth := 28
+		paddedLabel := fmt.Sprintf("%-*s", labelWidth, label) // Left-align, pad to width
+		
 		alertLine := fmt.Sprintf("%s %s %s %s",
 			lipgloss.NewStyle().Foreground(textColor).Bold(true).Render(icon),
 			lipgloss.NewStyle().Foreground(m.theme.TacticalMuted).Render(timeStr),
-			lipgloss.NewStyle().Foreground(textColor).Bold(true).Render(label),
+			lipgloss.NewStyle().Foreground(textColor).Bold(true).Render(paddedLabel),
 			lipgloss.NewStyle().Foreground(m.theme.TacticalValue).Render(agentName))
 		
 		// Add details if present (e.g., task counts)
