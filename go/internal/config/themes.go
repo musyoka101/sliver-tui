@@ -64,6 +64,10 @@ var themes = []Theme{
 	pastelTheme(),
 	heatmapTheme(),
 	lipGlossTheme(),
+	nordTheme(),
+	gruvboxTheme(),
+	tokyoNightTheme(),
+	monokaiTheme(),
 }
 
 // defaultTheme - Current Dracula-inspired theme (DEFAULT)
@@ -389,4 +393,160 @@ func GetTheme(index int) Theme {
 // GetThemeCount returns total number of themes
 func GetThemeCount() int {
 	return len(themes)
+}
+
+// nordTheme - Popular Nordic-inspired theme with cool blues and grays
+func nordTheme() Theme {
+	return Theme{
+		Name:            "Nord",
+		TitleColor:      lipgloss.Color("#88c0d0"), // Frost cyan
+		LogoColor:       lipgloss.Color("#81a1c1"), // Frost blue
+		StatusColor:     lipgloss.Color("#d8dee9"), // Snow storm light
+		SessionColor:    lipgloss.Color("#a3be8c"), // Aurora green
+		BeaconColor:     lipgloss.Color("#ebcb8b"), // Aurora yellow
+		DeadColor:       lipgloss.Color("#4c566a"), // Polar night dark
+		PrivilegedUser:  lipgloss.Color("#bf616a"), // Aurora red
+		NormalUser:      lipgloss.Color("#8fbcbb"), // Frost teal
+		HostnameColor:   lipgloss.Color("#8fbcbb"), // Frost teal
+		ProtocolMTLS:    lipgloss.Color("#5e81ac"), // Frost blue
+		ProtocolHTTP:    lipgloss.Color("#88c0d0"), // Frost cyan
+		ProtocolDNS:     lipgloss.Color("#81a1c1"), // Frost blue
+		ProtocolTCP:     lipgloss.Color("#b48ead"), // Aurora purple
+		ProtocolDefault: lipgloss.Color("#8fbcbb"), // Frost teal
+		NewBadgeColor:   lipgloss.Color("#ebcb8b"), // Aurora yellow
+		PrivBadgeColor:  lipgloss.Color("#bf616a"), // Aurora red
+		TacticalBorder:  lipgloss.Color("#88c0d0"), // Frost cyan
+		TacticalSection: lipgloss.Color("#81a1c1"), // Frost blue
+		TacticalValue:   lipgloss.Color("#a3be8c"), // Aurora green
+		TacticalMuted:   lipgloss.Color("#4c566a"), // Polar night
+		StatsColor:      lipgloss.Color("#88c0d0"), // Frost cyan
+		SeparatorColor:  lipgloss.Color("#434c5e"), // Polar night
+		HelpColor:       lipgloss.Color("#616e88"), // Polar night light
+		// Background colors - cool Nordic tints
+		SessionBg:       lipgloss.Color("#1a2a2a"),
+		BeaconBg:        lipgloss.Color("#2a2a1a"),
+		DeadBg:          lipgloss.Color("#2a2a2a"),
+		PrivilegedBg:    lipgloss.Color("#2a1a1a"),
+		NewBg:           lipgloss.Color("#2a2a00"),
+		ProtocolBg:      lipgloss.Color("#1a1a2a"),
+		TacticalPanelBg: lipgloss.Color("#1a2028"),
+		HeaderBg:        lipgloss.Color("#1a1a1a"),
+	}
+}
+
+// gruvboxTheme - Retro warm color scheme inspired by Gruvbox
+func gruvboxTheme() Theme {
+	return Theme{
+		Name:            "Gruvbox",
+		TitleColor:      lipgloss.Color("#fe8019"), // Bright orange
+		LogoColor:       lipgloss.Color("#d65d0e"), // Orange
+		StatusColor:     lipgloss.Color("#a89984"), // Gray
+		SessionColor:    lipgloss.Color("#b8bb26"), // Bright green
+		BeaconColor:     lipgloss.Color("#fabd2f"), // Bright yellow
+		DeadColor:       lipgloss.Color("#665c54"), // Dark gray
+		PrivilegedUser:  lipgloss.Color("#fb4934"), // Bright red
+		NormalUser:      lipgloss.Color("#83a598"), // Bright blue
+		HostnameColor:   lipgloss.Color("#83a598"), // Bright blue
+		ProtocolMTLS:    lipgloss.Color("#d3869b"), // Bright purple
+		ProtocolHTTP:    lipgloss.Color("#8ec07c"), // Bright aqua
+		ProtocolDNS:     lipgloss.Color("#fabd2f"), // Bright yellow
+		ProtocolTCP:     lipgloss.Color("#fe8019"), // Bright orange
+		ProtocolDefault: lipgloss.Color("#83a598"), // Bright blue
+		NewBadgeColor:   lipgloss.Color("#fabd2f"), // Bright yellow
+		PrivBadgeColor:  lipgloss.Color("#fb4934"), // Bright red
+		TacticalBorder:  lipgloss.Color("#fe8019"), // Bright orange
+		TacticalSection: lipgloss.Color("#b8bb26"), // Bright green
+		TacticalValue:   lipgloss.Color("#fabd2f"), // Bright yellow
+		TacticalMuted:   lipgloss.Color("#7c6f64"), // Gray
+		StatsColor:      lipgloss.Color("#fe8019"), // Bright orange
+		SeparatorColor:  lipgloss.Color("#665c54"), // Dark gray
+		HelpColor:       lipgloss.Color("#a89984"), // Gray
+		// Background colors - warm retro tints
+		SessionBg:       lipgloss.Color("#1a2a1a"),
+		BeaconBg:        lipgloss.Color("#2a2a0a"),
+		DeadBg:          lipgloss.Color("#2a2a2a"),
+		PrivilegedBg:    lipgloss.Color("#2a1a0a"),
+		NewBg:           lipgloss.Color("#2a2a00"),
+		ProtocolBg:      lipgloss.Color("#1a2a1a"),
+		TacticalPanelBg: lipgloss.Color("#1d2021"),
+		HeaderBg:        lipgloss.Color("#1a1a1a"),
+	}
+}
+
+// tokyoNightTheme - Modern dark theme with purple, blue, and pink accents
+func tokyoNightTheme() Theme {
+	return Theme{
+		Name:            "Tokyo Night",
+		TitleColor:      lipgloss.Color("#7aa2f7"), // Blue
+		LogoColor:       lipgloss.Color("#bb9af7"), // Purple
+		StatusColor:     lipgloss.Color("#a9b1d6"), // Light gray-blue
+		SessionColor:    lipgloss.Color("#9ece6a"), // Green
+		BeaconColor:     lipgloss.Color("#e0af68"), // Yellow
+		DeadColor:       lipgloss.Color("#565f89"), // Dark blue-gray
+		PrivilegedUser:  lipgloss.Color("#f7768e"), // Red
+		NormalUser:      lipgloss.Color("#7dcfff"), // Cyan
+		HostnameColor:   lipgloss.Color("#7dcfff"), // Cyan
+		ProtocolMTLS:    lipgloss.Color("#bb9af7"), // Purple
+		ProtocolHTTP:    lipgloss.Color("#7aa2f7"), // Blue
+		ProtocolDNS:     lipgloss.Color("#2ac3de"), // Teal
+		ProtocolTCP:     lipgloss.Color("#ff9e64"), // Orange
+		ProtocolDefault: lipgloss.Color("#7dcfff"), // Cyan
+		NewBadgeColor:   lipgloss.Color("#e0af68"), // Yellow
+		PrivBadgeColor:  lipgloss.Color("#f7768e"), // Red
+		TacticalBorder:  lipgloss.Color("#7aa2f7"), // Blue
+		TacticalSection: lipgloss.Color("#bb9af7"), // Purple
+		TacticalValue:   lipgloss.Color("#9ece6a"), // Green
+		TacticalMuted:   lipgloss.Color("#565f89"), // Dark blue-gray
+		StatsColor:      lipgloss.Color("#7aa2f7"), // Blue
+		SeparatorColor:  lipgloss.Color("#414868"), // Dark gray
+		HelpColor:       lipgloss.Color("#565f89"), // Dark blue-gray
+		// Background colors - Tokyo night tints
+		SessionBg:       lipgloss.Color("#1a2a1a"),
+		BeaconBg:        lipgloss.Color("#2a2a1a"),
+		DeadBg:          lipgloss.Color("#2a2a2a"),
+		PrivilegedBg:    lipgloss.Color("#2a1a1a"),
+		NewBg:           lipgloss.Color("#2a2a1a"),
+		ProtocolBg:      lipgloss.Color("#1a1a2a"),
+		TacticalPanelBg: lipgloss.Color("#1a1b26"),
+		HeaderBg:        lipgloss.Color("#1a1a1a"),
+	}
+}
+
+// monokaiTheme - Classic Monokai theme with high contrast
+func monokaiTheme() Theme {
+	return Theme{
+		Name:            "Monokai",
+		TitleColor:      lipgloss.Color("#66d9ef"), // Cyan
+		LogoColor:       lipgloss.Color("#ae81ff"), // Purple
+		StatusColor:     lipgloss.Color("#75715e"), // Gray
+		SessionColor:    lipgloss.Color("#a6e22e"), // Green
+		BeaconColor:     lipgloss.Color("#e6db74"), // Yellow
+		DeadColor:       lipgloss.Color("#75715e"), // Gray
+		PrivilegedUser:  lipgloss.Color("#f92672"), // Pink/Red
+		NormalUser:      lipgloss.Color("#66d9ef"), // Cyan
+		HostnameColor:   lipgloss.Color("#66d9ef"), // Cyan
+		ProtocolMTLS:    lipgloss.Color("#ae81ff"), // Purple
+		ProtocolHTTP:    lipgloss.Color("#66d9ef"), // Cyan
+		ProtocolDNS:     lipgloss.Color("#a6e22e"), // Green
+		ProtocolTCP:     lipgloss.Color("#fd971f"), // Orange
+		ProtocolDefault: lipgloss.Color("#66d9ef"), // Cyan
+		NewBadgeColor:   lipgloss.Color("#e6db74"), // Yellow
+		PrivBadgeColor:  lipgloss.Color("#f92672"), // Pink/Red
+		TacticalBorder:  lipgloss.Color("#66d9ef"), // Cyan
+		TacticalSection: lipgloss.Color("#ae81ff"), // Purple
+		TacticalValue:   lipgloss.Color("#a6e22e"), // Green
+		TacticalMuted:   lipgloss.Color("#75715e"), // Gray
+		StatsColor:      lipgloss.Color("#66d9ef"), // Cyan
+		SeparatorColor:  lipgloss.Color("#49483e"), // Dark gray
+		HelpColor:       lipgloss.Color("#75715e"), // Gray
+		// Background colors - Monokai dark tints
+		SessionBg:       lipgloss.Color("#1a2a1a"),
+		BeaconBg:        lipgloss.Color("#2a2a1a"),
+		DeadBg:          lipgloss.Color("#2a2a2a"),
+		PrivilegedBg:    lipgloss.Color("#2a1a1a"),
+		NewBg:           lipgloss.Color("#2a2a1a"),
+		ProtocolBg:      lipgloss.Color("#1a1a2a"),
+		TacticalPanelBg: lipgloss.Color("#1e1f1c"),
+		HeaderBg:        lipgloss.Color("#1a1a1a"),
+	}
 }
