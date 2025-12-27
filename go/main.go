@@ -1054,19 +1054,21 @@ func (m model) renderDashboard() string {
 	content.WriteString(headerStyle.Render("📊 DASHBOARD - OPERATIONAL ANALYTICS"))
 	content.WriteString("\n\n")
 	
-	// Create 2x3 grid layout for panels
-	// Top row: C2 Infrastructure | OS & Privilege Matrix | Network Topology
-	// Bottom row: Security Status | Activity Metrics
+	// Create 2-row grid layout for panels (6 panels total)
+	// Top row: C2 Infrastructure | Architecture | Task Queue Monitor
+	// Bottom row: Network Topology | Security Status | Activity Metrics
+	// Note: All panels now have equal width (38 chars) for consistent grid alignment
 	
 	c2Panel := m.renderC2InfrastructurePanel()
 	archPanel := m.renderArchitecturePanel()
+	taskQueuePanel := m.renderTaskQueuePanel()
 	networkPanel := m.renderNetworkTopologyPanel()
 	securityPanel := m.renderSecurityStatusPanel()
 	sparklinePanel := m.renderSparklinePanel()
 	
 	// Use lipgloss JoinHorizontal to place panels side by side
-	topRow := lipgloss.JoinHorizontal(lipgloss.Top, c2Panel, "  ", archPanel, "  ", networkPanel)
-	bottomRow := lipgloss.JoinHorizontal(lipgloss.Top, securityPanel, "  ", sparklinePanel)
+	topRow := lipgloss.JoinHorizontal(lipgloss.Top, c2Panel, "  ", archPanel, "  ", taskQueuePanel)
+	bottomRow := lipgloss.JoinHorizontal(lipgloss.Top, networkPanel, "  ", securityPanel, "  ", sparklinePanel)
 	
 	content.WriteString(topRow)
 	content.WriteString("\n\n")
@@ -1671,7 +1673,7 @@ func (m model) renderSparklinePanel() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.theme.TacticalBorder).
 		Padding(1, 2).
-		Width(78). // Wider to span 2 columns
+		Width(38). // Consistent width with other panels for 3x2 grid
 		Height(18) // Taller for time axis
 	
 	titleStyle := lipgloss.NewStyle().
@@ -1702,7 +1704,7 @@ func (m model) renderSparklinePanel() string {
 		durationStr, len(samples))))
 	lines = append(lines, "")
 	
-	sparklineWidth := 48 // Fixed width for all sparklines
+	sparklineWidth := 28 // Adjusted width for narrower panel (38 char panel)
 	
 	if len(samples) == 0 {
 		lines = append(lines, mutedStyle.Render("Collecting data... (first sample in 10min)"))
