@@ -22,6 +22,7 @@ A modern, high-performance **Bubble Tea** (Go) implementation of the Sliver C2 n
 - ✅ OS-specific icons (🖥️ 💻 🐧)
 - ✅ Protocol color coding (MTLS, HTTP, DNS, TCP)
 - ✅ **Interactive analytics dashboard**
+- ✅ **Real-time alert system with tactical notifications**
 
 📊 **Advanced Analytics Dashboard**
 - **C2 Infrastructure Map** - Active C2 servers with agent counts and protocol breakdown
@@ -35,6 +36,20 @@ A modern, high-performance **Bubble Tea** (Go) implementation of the Sliver C2 n
   - Privileged agents detected
   - Time-mapped visualization with hour markers
   - Peak, current, and average statistics
+
+🚨 **Real-Time Alert System**
+- **Military-style alert panel** - Bottom-right tactical notifications with color-coded severity
+- **Comprehensive event tracking**:
+  - New agent acquisition (sessions vs beacons, privileged vs standard)
+  - Privilege escalation detection
+  - Session state changes (beacon → session upgrades)
+  - Beacon task lifecycle (queued/completed with progress tracking)
+  - Agent disconnection alerts
+- **Smart contextual details** - Active agent counts, state transitions, task progress
+- **Column-aligned display** - Hostnames align perfectly for easy scanning
+- **Configurable TTL** - Critical alerts visible for 50 seconds, others 15-35 seconds
+- **Pulse animations** - Critical alerts pulse red border for immediate attention
+- **Deduplication** - Prevents alert spam within 5-second windows
 
 ⚡ **Performance Benefits**
 - Compiled binary (no Python/venv needed)
@@ -138,6 +153,98 @@ The dashboard features a **5-panel layout** providing comprehensive operational 
 - **Orange-red BURNED badges** (#FF4500) for compromised agents
 - **Themed color schemes** - 5 professional themes to choose from
 
+## Alert System
+
+### Real-Time Tactical Notifications
+
+The alert panel provides **military-style operational awareness** with color-coded severity levels and contextual details positioned in the bottom-right corner.
+
+**Alert Categories:**
+
+**Critical Alerts** (Red ║█║ - 35s TTL):
+- Agent disconnection/loss
+- Security breaches
+- Critical system events
+
+**Warning Alerts** (Orange ║▒║ - 25s TTL):
+- Beacon missed check-ins
+- Potential issues requiring attention
+
+**Success Alerts** (Green ║▓║ - 20s TTL):
+- Task completion
+- Privilege escalation events
+
+**Info Alerts** (Cyan ║░║ - 15s TTL):
+- New agent acquisition (sessions/beacons)
+- Session state changes
+- Task queued notifications
+
+**Notice Alerts** (Gray ║ ║ - 13s TTL):
+- System notices
+- General informational events
+
+**Extended TTL Events** (50s):
+- Privileged session acquisition
+- Privileged beacon acquisition
+- Privilege escalation
+- New agent connections
+
+### Alert Display Format
+
+```
+╔══════════════════════════════════════════════════════════════════════╗
+║ ⚠ ALERTS ◉ ACTIVE                                                   ║
+║ ║█║ 10:41 PRIVILEGED BEACON ACQUIRED    m3webaw (8 active)          ║
+║ ║▓║ 10:42 TASK COMPLETE                 webserver (5/5 done)        ║
+║ ║░║ 10:43 SESSION ACQUIRED              cywebdw (beacon→session)    ║
+╚══════════════════════════════════════════════════════════════════════╝
+```
+
+**Features:**
+- **Column-aligned hostnames** - All hostnames start at the same position for easy scanning
+- **Contextual details** - Active counts, state transitions, task progress in parentheses
+- **Timestamp display** - 24-hour format (HH:MM)
+- **Pulse animation** - Critical alerts pulse red border every 500ms
+- **Smart deduplication** - Prevents duplicate alerts within 5-second windows
+- **Auto-expiration** - Alerts fade after TTL expires
+
+### Monitored Events
+
+1. **Agent Acquisition**
+   - `PRIVILEGED SESSION ACQUIRED` - New privileged interactive session
+   - `SESSION ACQUIRED` - New standard interactive session
+   - `PRIVILEGED BEACON ACQUIRED` - New privileged beacon
+   - `BEACON ACQUIRED` - New standard beacon
+   - Shows total active agent count
+
+2. **Privilege Changes**
+   - `PRIVILEGED ESCALATION` - Existing agent gained elevated privileges
+   - Shows agent type (session/beacon)
+
+3. **Session State Changes**
+   - `PRIVILEGED SESSION INIT` - Beacon upgraded to privileged session
+   - `SESSION INIT` - Beacon upgraded to standard session
+   - `SESSION TERMINATED` - Session closed/downgraded
+   - Shows state transition (beacon→session)
+
+4. **Beacon Task Lifecycle**
+   - `TASK QUEUED` - New task added to beacon queue
+   - Shows pending count change (3→4 pending)
+   - `TASK COMPLETE` - Beacon task finished execution
+   - Shows completion progress (4/5 done)
+
+5. **Agent Loss**
+   - `AGENT LOST` - Agent disconnected/unreachable
+   - Critical priority for immediate operator attention
+
+### Alert Panel Positioning
+
+- **Location:** Bottom-right corner, flush with right edge
+- **Width:** 70 characters (plus 2 for border = 72 chars total)
+- **Height:** Dynamic based on active alerts (max 5 visible)
+- **Minimum terminal width:** 120 columns recommended
+- **Overlay:** Positioned above tree/list view without disrupting main content
+
 ## Architecture
 
 **Technology Stack:**
@@ -150,15 +257,28 @@ The dashboard features a **5-panel layout** providing comprehensive operational 
 **Project Structure:**
 ```
 go/
-├── main.go          - Bubble Tea app, UI rendering & dashboard panels
-├── sliver.go        - Sliver client & gRPC connection
-├── themes.go        - Theme definitions and color schemes
-├── views.go         - View type definitions
-├── go.mod           - Go module dependencies
-├── go.sum           - Dependency checksums
-├── build.sh         - Build script
-├── run.sh           - Launcher script
-└── README.md        - This file
+├── main.go                    - Bubble Tea app, UI rendering & dashboard panels
+├── internal/
+│   ├── alerts/
+│   │   └── alerts.go         - Alert system with severity levels and TTL management
+│   ├── client/
+│   │   └── sliver.go         - Sliver client & gRPC connection
+│   ├── config/
+│   │   ├── themes.go         - Theme definitions and color schemes
+│   │   └── views.go          - View type definitions
+│   ├── models/
+│   │   └── agent.go          - Agent data structures
+│   ├── tracking/
+│   │   ├── activity.go       - 12-hour activity tracking with sparklines
+│   │   └── changes.go        - Agent state change detection
+│   └── tree/
+│       └── builder.go        - Hierarchical tree builder
+├── go.mod                     - Go module dependencies
+├── go.sum                     - Dependency checksums
+├── build.sh                   - Build script
+├── install.sh                 - Installation script
+├── run.sh                     - Launcher script
+└── README.md                  - This file
 ```
 
 ## Current Status
@@ -184,6 +304,10 @@ go/
 - [x] **Task queue monitoring**
 - [x] **Security status tracking (Evasion/Burned)**
 - [x] **12-hour activity tracking with sparklines**
+- [x] **Real-time alert system**
+- [x] **Tactical alert panel with severity levels**
+- [x] **Event-driven notifications (agent acquisition, privilege escalation, tasks)**
+- [x] **Column-aligned alert display**
 - [x] **Multiple theme support**
 - [x] **Multiple view modes**
 - [x] **Scrollable viewport**
@@ -260,7 +384,19 @@ Each panel is independently rendered:
 - `renderTaskQueuePanel()` - Beacon task progress tracking
 - `renderSecurityStatusPanel()` - STEALTH/BURNED agent listing
 - `renderSparklinePanel()` - Historical activity sparklines
+- `renderAlertPanel()` - Real-time tactical notifications with severity levels
+- `renderTacticalPanel()` - Top-right intelligence summary panel
 - All panels use consistent width/height for grid alignment
+
+### Alert System Architecture
+Event-driven notification system with intelligent change detection:
+- `AlertManager` - Thread-safe alert queue with TTL management
+- `detectAgentChanges()` - Monitors agent state transitions
+- Severity-based categorization (Critical, Warning, Success, Info, Notice)
+- Automatic expiration based on alert type
+- Deduplication prevents alert spam
+- Pulse animation for critical events
+- Column-aligned display formatting
 
 ## Configuration
 
@@ -302,6 +438,17 @@ go build -o sliver-tui .
 - Sparklines will populate as data is collected over time
 - Each sample is taken every 10 minutes
 
+**Alert Panel Not Visible:**
+- Alerts only appear when events occur (agent connections, tasks, etc.)
+- Test by connecting a new agent or running beacon tasks
+- Check terminal width is at least 120 columns
+- Alert panel appears bottom-right corner automatically
+
+**Alerts Truncated or Overlapping:**
+- Ensure terminal width is 120+ columns (130+ recommended)
+- Alert panel is 72 chars wide and needs adequate space
+- Use full-screen terminal for best experience
+
 ## Performance Comparison
 
 | Metric | Python | Go + Bubble Tea |
@@ -313,6 +460,7 @@ go build -o sliver-tui .
 | Refresh Speed | ~500ms | ~50ms |
 | Dashboard | ❌ | ✅ (5 panels) |
 | Activity Tracking | ❌ | ✅ (12-hour history) |
+| Alert System | ❌ | ✅ (Real-time notifications) |
 | Themes | 1 | 5 |
 
 ## Screenshots
