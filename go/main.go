@@ -377,16 +377,16 @@ func (m *model) detectAgentChanges(newAgents []Agent) {
 			if agent.IsSession {
 				// Session-specific alerts
 				if agent.IsPrivileged {
-					m.alertManager.AddAlert(alertType, alerts.CategoryPrivilegedSessionOpened, "Privileged session opened", agent.Hostname)
+					m.alertManager.AddAlert(alertType, alerts.CategoryPrivilegedSessionAcquired, "Privileged session connected", agent.Hostname)
 				} else {
-					m.alertManager.AddAlert(alertType, alerts.CategorySessionOpened, "Session opened", agent.Hostname)
+					m.alertManager.AddAlert(alertType, alerts.CategorySessionAcquired, "Session connected", agent.Hostname)
 				}
 			} else {
 				// Beacon-specific alerts
 				if agent.IsPrivileged {
-					m.alertManager.AddAlert(alertType, alerts.CategoryAgentConnected, "Privileged beacon connected", agent.Hostname)
+					m.alertManager.AddAlert(alertType, alerts.CategoryPrivilegedBeaconAcquired, "Privileged beacon connected", agent.Hostname)
 				} else {
-					m.alertManager.AddAlert(alertType, alerts.CategoryAgentConnected, "Beacon connected", agent.Hostname)
+					m.alertManager.AddAlert(alertType, alerts.CategoryBeaconAcquired, "Beacon connected", agent.Hostname)
 				}
 			}
 		}
@@ -757,7 +757,7 @@ func (m model) View() string {
 	// Position slightly left of tactical panel to accommodate wider width
 	alertPanel := m.renderAlertPanel()
 	if alertPanel != "" {
-		// Alert panel is wider (49 chars), position it about 10 chars left of tactical panel
+		// Alert panel is 44 chars (40 width + border), position it about 10 chars left of tactical panel
 		tacticalPanelWidth := 37
 		alertPanelOffset := 10 // Offset from tactical panel position
 		alertPanelX := m.termWidth - tacticalPanelWidth - alertPanelOffset

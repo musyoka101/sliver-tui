@@ -24,11 +24,15 @@ const (
 	CategoryAgentDisconnected
 	CategoryBeaconLate
 	CategoryBeaconMissed
-	CategoryBeaconTaskQueued   // New task assigned to beacon
-	CategoryBeaconTaskComplete // Task execution finished
-	CategoryPrivilegedAccess
-	CategoryPrivilegedSessionOpened // Privileged session initialized
-	CategorySessionOpened
+	CategoryBeaconTaskQueued         // New task assigned to beacon
+	CategoryBeaconTaskComplete       // Task execution finished
+	CategoryPrivilegedAccess         // Privilege escalation on existing agent
+	CategoryPrivilegedSessionOpened  // Privileged session initialized
+	CategorySessionOpened            // Normal session initialized
+	CategoryPrivilegedSessionAcquired // New privileged session connected
+	CategorySessionAcquired          // New normal session connected
+	CategoryPrivilegedBeaconAcquired // New privileged beacon connected
+	CategoryBeaconAcquired           // New normal beacon connected
 	CategorySessionClosed
 	CategoryC2Connected
 	CategoryC2Disconnected
@@ -97,11 +101,15 @@ func (am *AlertManager) AddAlertWithDetails(alertType AlertType, category AlertC
 	// Category-specific TTL overrides for important events
 	switch category {
 	case CategoryAgentConnected:
-		ttl = 50 * time.Second // Extended: 20s + 30s = 50s
+		ttl = 50 * time.Second // Extended: 20s + 30s = 50s (legacy)
 	case CategoryPrivilegedAccess:
-		ttl = 50 * time.Second // Extended: 20s + 30s = 50s
+		ttl = 50 * time.Second // Extended: privilege escalation is critical
 	case CategoryPrivilegedSessionOpened:
-		ttl = 50 * time.Second // Extended: privileged sessions are important
+		ttl = 50 * time.Second // Extended: privileged session init
+	case CategoryPrivilegedSessionAcquired:
+		ttl = 50 * time.Second // Extended: new privileged session
+	case CategoryPrivilegedBeaconAcquired:
+		ttl = 50 * time.Second // Extended: new privileged beacon
 	}
 
 	alert := Alert{
@@ -243,9 +251,17 @@ func (a Alert) GetLabel() string {
 	case CategoryPrivilegedAccess:
 		return "PRIV ESCALATED"
 	case CategoryPrivilegedSessionOpened:
-		return "PRIVILEGED SESSION INIT"
+		return "PRIV SESSION INIT"
 	case CategorySessionOpened:
 		return "SESSION INIT"
+	case CategoryPrivilegedSessionAcquired:
+		return "PRIV SESSION ACQ"
+	case CategorySessionAcquired:
+		return "SESSION ACQ"
+	case CategoryPrivilegedBeaconAcquired:
+		return "PRIV BEACON ACQ"
+	case CategoryBeaconAcquired:
+		return "BEACON ACQ"
 	case CategorySessionClosed:
 		return "SESSION TERM"
 	case CategoryC2Connected:
