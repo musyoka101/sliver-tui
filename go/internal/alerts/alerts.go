@@ -233,7 +233,7 @@ func (a Alert) GetIcon() string {
 	}
 }
 
-// GetLabel returns a short label for the category
+// GetLabel returns a descriptive label for the category
 func (a Alert) GetLabel() string {
 	switch a.Category {
 	case CategoryAgentConnected:
@@ -249,21 +249,21 @@ func (a Alert) GetLabel() string {
 	case CategoryBeaconTaskComplete:
 		return "TASK COMPLETE"
 	case CategoryPrivilegedAccess:
-		return "PRIV ESCALATED"
+		return "PRIVILEGED ESCALATION"
 	case CategoryPrivilegedSessionOpened:
-		return "PRIV SESSION INIT"
+		return "PRIVILEGED SESSION INIT"
 	case CategorySessionOpened:
 		return "SESSION INIT"
 	case CategoryPrivilegedSessionAcquired:
-		return "PRIV SESSION ACQ"
+		return "PRIVILEGED SESSION ACQUIRED"
 	case CategorySessionAcquired:
-		return "SESSION ACQ"
+		return "SESSION ACQUIRED"
 	case CategoryPrivilegedBeaconAcquired:
-		return "PRIV BEACON ACQ"
+		return "PRIVILEGED BEACON ACQUIRED"
 	case CategoryBeaconAcquired:
-		return "BEACON ACQ"
+		return "BEACON ACQUIRED"
 	case CategorySessionClosed:
-		return "SESSION TERM"
+		return "SESSION TERMINATED"
 	case CategoryC2Connected:
 		return "C2 ONLINE"
 	case CategoryC2Disconnected:
@@ -271,7 +271,7 @@ func (a Alert) GetLabel() string {
 	case CategorySecurityBreach:
 		return "SECURITY ALERT"
 	case CategorySystemNotice:
-		return "SYS NOTICE"
+		return "SYSTEM NOTICE"
 	default:
 		return "EVENT"
 	}

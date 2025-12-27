@@ -373,20 +373,28 @@ func (m *model) detectAgentChanges(newAgents []Agent) {
 			// New agent connected
 			alertType := alerts.AlertSuccess
 			
+			// Count current active agents for context
+			activeCount := len(newAgentMap)
+			details := fmt.Sprintf("(%d active)", activeCount)
+			
 			// Determine appropriate alert based on agent type and privilege
 			if agent.IsSession {
 				// Session-specific alerts
 				if agent.IsPrivileged {
-					m.alertManager.AddAlert(alertType, alerts.CategoryPrivilegedSessionAcquired, "Privileged session connected", agent.Hostname)
+					m.alertManager.AddAlertWithDetails(alertType, alerts.CategoryPrivilegedSessionAcquired, 
+						"Privileged session connected", agent.Hostname, details)
 				} else {
-					m.alertManager.AddAlert(alertType, alerts.CategorySessionAcquired, "Session connected", agent.Hostname)
+					m.alertManager.AddAlertWithDetails(alertType, alerts.CategorySessionAcquired, 
+						"Session connected", agent.Hostname, details)
 				}
 			} else {
 				// Beacon-specific alerts
 				if agent.IsPrivileged {
-					m.alertManager.AddAlert(alertType, alerts.CategoryPrivilegedBeaconAcquired, "Privileged beacon connected", agent.Hostname)
+					m.alertManager.AddAlertWithDetails(alertType, alerts.CategoryPrivilegedBeaconAcquired, 
+						"Privileged beacon connected", agent.Hostname, details)
 				} else {
-					m.alertManager.AddAlert(alertType, alerts.CategoryBeaconAcquired, "Beacon connected", agent.Hostname)
+					m.alertManager.AddAlertWithDetails(alertType, alerts.CategoryBeaconAcquired, 
+						"Beacon connected", agent.Hostname, details)
 				}
 			}
 		}
@@ -415,14 +423,29 @@ func (m *model) detectAgentChanges(newAgents []Agent) {
 		if oldAgent, exists := m.previousAgents[id]; exists {
 			// Check if privilege escalated (wasn't privileged before, is now)
 			if newAgent.IsPrivileged && !oldAgent.IsPrivileged {
-				m.alertManager.AddAlert(alerts.AlertSuccess, alerts.CategoryPrivilegedAccess, "Privilege escalated", newAgent.Hostname)
+				agentType := "beacon"
+				if newAgent.IsSession {
+					agentType = "session"
+				}
+				details := fmt.Sprintf("(%s)", agentType)
+				m.alertManager.AddAlertWithDetails(alerts.AlertSuccess, alerts.CategoryPrivilegedAccess, 
+					"Privilege escalated", newAgent.Hostname, details)
 			}
 			
 			// Check if session state changed (beacon converted to session)
 			if newAgent.IsSession && !oldAgent.IsSession {
-				m.alertManager.AddAlert(alerts.AlertInfo, alerts.CategorySessionOpened, "Beacon upgraded to session", newAgent.Hostname)
+				details := "(beacon→session)"
+				if newAgent.IsPrivileged {
+					m.alertManager.AddAlertWithDetails(alerts.AlertInfo, alerts.CategoryPrivilegedSessionOpened, 
+						"Beacon upgraded to privileged session", newAgent.Hostname, details)
+				} else {
+					m.alertManager.AddAlertWithDetails(alerts.AlertInfo, alerts.CategorySessionOpened, 
+						"Beacon upgraded to session", newAgent.Hostname, details)
+				}
 			} else if !newAgent.IsSession && oldAgent.IsSession {
-				m.alertManager.AddAlert(alerts.AlertInfo, alerts.CategorySessionClosed, "Session closed", newAgent.Hostname)
+				details := "(session→beacon)"
+				m.alertManager.AddAlertWithDetails(alerts.AlertInfo, alerts.CategorySessionClosed, 
+					"Session closed", newAgent.Hostname, details)
 			}
 		}
 	}
@@ -485,13 +508,13 @@ func (m model) renderAlertPanel() string {
 		}
 	}
 
-	// Panel styling with military aesthetic - slightly wider than tactical panel
+	// Panel styling with military aesthetic - expanded width for full alert details
 	panelStyle := lipgloss.NewStyle().
 		Border(lipgloss.DoubleBorder()).
 		BorderForeground(borderColor).
 		Background(m.theme.TacticalPanelBg). // Use theme background
 		Padding(0, 1).
-		Width(45) // Wider for better alert display
+		Width(70) // Expanded width for full labels and hostnames
 
 	titleStyle := lipgloss.NewStyle().
 		Foreground(m.theme.TacticalBorder). // Use theme color
@@ -540,13 +563,13 @@ func (m model) renderAlertPanel() string {
 			agentName = alert.Message
 		}
 		
-		// Truncate agent name if too long (max 15 chars for single line)
-		if len(agentName) > 15 {
-			agentName = agentName[:15]
+		// Truncate agent name if too long (max 25 chars with expanded panel)
+		if len(agentName) > 25 {
+			agentName = agentName[:25]
 		}
 
-		// Single line format: ║█║ 19:45 PRIV ESCALATED m3dc
-		// Or with details: ║█║ 19:45 TASK QUEUED m3dc (3→4)
+		// Single line format with expanded width: ║█║ 19:45 PRIVILEGED SESSION ACQUIRED hostname
+		// Or with details: ║█║ 19:45 TASK QUEUED hostname (3→4 pending)
 		alertLine := fmt.Sprintf("%s %s %s %s",
 			lipgloss.NewStyle().Foreground(textColor).Bold(true).Render(icon),
 			lipgloss.NewStyle().Foreground(m.theme.TacticalMuted).Render(timeStr),
@@ -757,12 +780,14 @@ func (m model) View() string {
 	// Position slightly left of tactical panel to accommodate wider width
 	alertPanel := m.renderAlertPanel()
 	if alertPanel != "" {
-		// Alert panel is 44 chars (40 width + border), position it about 10 chars left of tactical panel
-		tacticalPanelWidth := 37
-		alertPanelOffset := 10 // Offset from tactical panel position
-		alertPanelX := m.termWidth - tacticalPanelWidth - alertPanelOffset
-		if alertPanelX < 100 {
-			alertPanelX = 100
+		// Alert panel is 72 chars wide (70 content + 2 border), position it left of right edge
+		alertPanelWidth := 72 // Actual rendered width with border
+		
+		// Calculate position: from right edge, move left by alert panel width + some spacing
+		// This ensures the panel fits on screen and extends leftward as intended
+		alertPanelX := m.termWidth - alertPanelWidth // 0 padding - flush with right edge
+		if alertPanelX < 60 { // Minimum left position to avoid overlap with tree
+			alertPanelX = 60
 		}
 		
 		leftLines := strings.Split(leftContent, "\n")
