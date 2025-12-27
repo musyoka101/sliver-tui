@@ -1170,45 +1170,71 @@ func (m model) renderArchitecturePanel() string {
 	mutedStyle := lipgloss.NewStyle().
 		Foreground(m.theme.TacticalMuted)
 	
+	// Cyan bar style matching task queue
+	barStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#00CED1")) // Dark turquoise
+	
 	// Privilege color styles
 	privStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#50fa7b")) // Green for privileged
+		Foreground(lipgloss.Color("#ff5555")). // Red for privileged
+		Bold(true)
 	
 	userStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#f1fa8c")) // Yellow for user-level
+		Foreground(lipgloss.Color("#50fa7b")) // Green for user-level
 	
 	var lines []string
 	lines = append(lines, titleStyle.Render("💻 OS & PRIVILEGE MATRIX"))
 	lines = append(lines, "")
 	
-	// Group by OS + Architecture
-	type OSArch struct {
+	// Count OS types, architectures, and privilege levels
+	type OSArchKey struct {
 		OS   string
 		Arch string
 	}
 	
-	osArchData := make(map[OSArch]struct {
+	osArchData := make(map[OSArchKey]struct {
 		privileged int
 		user       int
+		sessions   int
+		beacons    int
 	})
 	
-	totalAgents := len(m.agents)
+	totalAgents := 0
+	totalPrivileged := 0
+	totalSessions := 0
 	
 	for _, agent := range m.agents {
 		if agent.IsDead {
 			continue // Skip dead agents
 		}
 		
+		totalAgents++
+		if agent.IsPrivileged {
+			totalPrivileged++
+		}
+		if agent.IsSession {
+			totalSessions++
+		}
+		
 		os := agent.OS
 		if os == "" {
 			os = "unknown"
 		}
+		// Simplify OS names
+		if strings.Contains(strings.ToLower(os), "windows") {
+			os = "Windows"
+		} else if strings.Contains(strings.ToLower(os), "linux") {
+			os = "Linux"
+		} else if strings.Contains(strings.ToLower(os), "darwin") {
+			os = "macOS"
+		}
+		
 		arch := agent.Arch
 		if arch == "" {
 			arch = "unknown"
 		}
 		
-		key := OSArch{OS: os, Arch: arch}
+		key := OSArchKey{OS: os, Arch: arch}
 		data := osArchData[key]
 		
 		if agent.IsPrivileged {
@@ -1216,44 +1242,73 @@ func (m model) renderArchitecturePanel() string {
 		} else {
 			data.user++
 		}
+		
+		if agent.IsSession {
+			data.sessions++
+		} else {
+			data.beacons++
+		}
+		
 		osArchData[key] = data
 	}
 	
 	if totalAgents == 0 {
 		lines = append(lines, mutedStyle.Render("No agents available"))
+		lines = append(lines, "")
+		lines = append(lines, mutedStyle.Render("Waiting for connections..."))
 	} else {
-		// Display each OS/Arch combination
+		// Summary stats at top
+		lines = append(lines, fmt.Sprintf("%s %s",
+			labelStyle.Render("Total Agents:"),
+			valueStyle.Render(fmt.Sprintf("%d", totalAgents))))
+		lines = append(lines, fmt.Sprintf("%s %s | %s",
+			mutedStyle.Render("├─"),
+			privStyle.Render(fmt.Sprintf("💎 %d priv", totalPrivileged)),
+			userStyle.Render(fmt.Sprintf("👤 %d std", totalAgents-totalPrivileged))))
+		lines = append(lines, fmt.Sprintf("%s %s | %s",
+			mutedStyle.Render("└─"),
+			labelStyle.Render(fmt.Sprintf("◆ %d sess", totalSessions)),
+			mutedStyle.Render(fmt.Sprintf("◇ %d beac", totalAgents-totalSessions))))
+		lines = append(lines, "")
+		
+		// Display each OS/Arch combination with detailed breakdown
 		for osArch, data := range osArchData {
+			total := data.privileged + data.user
 			
 			// OS icon
 			icon := "🖥️"
-			osName := osArch.OS
-			if strings.Contains(strings.ToLower(osName), "linux") {
+			if osArch.OS == "Linux" {
 				icon = "🐧"
-			} else if strings.Contains(strings.ToLower(osName), "darwin") || strings.Contains(strings.ToLower(osName), "mac") {
+			} else if osArch.OS == "macOS" {
 				icon = "🍎"
+			} else if osArch.OS == "Windows" {
+				icon = "🪟"
 			}
 			
-			// Show OS + Arch
-			lines = append(lines, fmt.Sprintf("%s %s (%s)",
+			// Calculate percentage
+			percentage := float64(total) / float64(totalAgents) * 100
+			
+			// Show OS + Arch with count
+			lines = append(lines, fmt.Sprintf("%s %s",
 				icon,
-				labelStyle.Render(osName),
-				mutedStyle.Render(osArch.Arch)))
+				labelStyle.Render(fmt.Sprintf("%s (%s)", osArch.OS, osArch.Arch))))
 			
-			// Show privilege breakdown with mini bars
-			if data.privileged > 0 {
-				privBar := strings.Repeat("█", min(data.privileged*2, 8))
-				lines = append(lines, fmt.Sprintf("   %s %s",
-					privStyle.Render(fmt.Sprintf("💎 %-8s", privBar)),
-					valueStyle.Render(fmt.Sprintf("%d priv", data.privileged))))
+			// Percentage bar
+			barLength := int(percentage / 10) // 10% per block
+			if barLength > 10 {
+				barLength = 10
 			}
+			bar := strings.Repeat("█", barLength) + strings.Repeat("░", 10-barLength)
+			lines = append(lines, fmt.Sprintf("  %s %s",
+				barStyle.Render(bar),
+				mutedStyle.Render(fmt.Sprintf("%.0f%%", percentage))))
 			
-			if data.user > 0 {
-				userBar := strings.Repeat("█", min(data.user*2, 8))
-				lines = append(lines, fmt.Sprintf("   %s %s",
-					userStyle.Render(fmt.Sprintf("👤 %-8s", userBar)),
-					mutedStyle.Render(fmt.Sprintf("%d user", data.user))))
-			}
+			// Privilege breakdown on same line
+			lines = append(lines, fmt.Sprintf("  %s%s │ %s%s",
+				privStyle.Render("💎"),
+				valueStyle.Render(fmt.Sprintf("%-2d", data.privileged)),
+				userStyle.Render("👤"),
+				mutedStyle.Render(fmt.Sprintf("%-2d", data.user))))
 			
 			lines = append(lines, "")
 		}
