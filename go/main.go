@@ -446,8 +446,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.animationFrame > 3 {
 			m.animationFrame = 0
 		}
-		// Only mark dirty and update if we're on Network Map or Box view
-		if m.view.Type == config.ViewTypeNetworkMap || m.view.Type == config.ViewTypeBox {
+		// Only mark dirty and update if we're on Network Map, Box, or Tree view
+		if m.view.Type == config.ViewTypeNetworkMap || m.view.Type == config.ViewTypeBox || m.view.Type == config.ViewTypeTree {
 			m.contentDirty = true
 			if m.ready {
 				m.updateViewportContent()
@@ -3246,10 +3246,11 @@ func (m model) renderAgentLine(agent Agent) []string {
 	
 	protocolBox := protocolBoxStyle.Render(strings.ToUpper(agent.Transport))
 	
-	line1 := fmt.Sprintf("%s%s%s▶ %s %s  %s%s%s",
+	line1 := fmt.Sprintf("%s%s%s%s %s %s  %s%s%s",
 		connectorStyle.Render("╰────────"),
 		protocolBox,
 		connectorStyle.Render("────────"),
+		connectorStyle.Render(m.getAnimatedHorizontalArrow()),
 		lipgloss.NewStyle().Foreground(statusColor).Render(statusIcon),
 		osIcon,
 		lipgloss.NewStyle().Foreground(usernameColor).Bold(true).Render(fmt.Sprintf("%s@%s", agent.Username, agent.Hostname)),
