@@ -57,12 +57,13 @@ type Alert struct {
 
 // AlertManager manages the alert queue
 type AlertManager struct {
-	alerts       []Alert
-	maxAlerts    int
-	mu           sync.RWMutex
-	pulseState   int       // For animation: 0, 1, 2 (dim, normal, bright)
-	lastPulseAt  time.Time
+	alerts        []Alert
+	maxAlerts     int
+	mu            sync.RWMutex
+	pulseState    int       // For animation: 0, 1, 2 (dim, normal, bright)
+	lastPulseAt   time.Time
 	pulseDuration time.Duration
+	expiredIndex  int       // Performance: track first non-expired alert index
 }
 
 // NewAlertManager creates a new alert manager
@@ -146,22 +147,37 @@ func (am *AlertManager) AddAlertWithDetails(alertType AlertType, category AlertC
 }
 
 // GetAlerts returns current alerts (removes expired ones)
+// Optimized to skip already-expired alerts using expiredIndex tracking
 func (am *AlertManager) GetAlerts() []Alert {
 	am.mu.Lock()
 	defer am.mu.Unlock()
 
 	now := time.Now()
-	validAlerts := make([]Alert, 0, len(am.alerts))
+	
+	// Fast path: if expiredIndex is set, skip checking already-expired alerts
+	startIdx := am.expiredIndex
+	if startIdx >= len(am.alerts) {
+		startIdx = 0
+	}
+	
+	validAlerts := make([]Alert, 0, len(am.alerts)-startIdx)
+	newExpiredIndex := len(am.alerts) // Will track first expired alert
 
-	for i := range am.alerts {
+	for i := startIdx; i < len(am.alerts); i++ {
 		if now.Sub(am.alerts[i].Timestamp) < am.alerts[i].TTL {
 			// Mark as not new after first display
 			am.alerts[i].IsNew = false
 			validAlerts = append(validAlerts, am.alerts[i])
+		} else if newExpiredIndex == len(am.alerts) {
+			// Track first expired alert
+			newExpiredIndex = i
 		}
 	}
 
+	// Update alerts list and expired index
 	am.alerts = validAlerts
+	am.expiredIndex = 0 // Reset since we cleaned up
+	
 	return validAlerts
 }
 

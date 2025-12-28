@@ -7,6 +7,7 @@ import (
 )
 
 // BuildAgentTree organizes agents into a hierarchical tree based on pivot relationships
+// Optimized to O(n) complexity using parent-child index
 func BuildAgentTree(agents []models.Agent) []models.Agent {
 	// Create maps for quick lookup
 	agentMap := make(map[string]*models.Agent)
@@ -14,9 +15,10 @@ func BuildAgentTree(agents []models.Agent) []models.Agent {
 		agentMap[agents[i].ID] = &agents[i]
 	}
 
-	// Identify parent-child relationships
+	// Identify parent-child relationships and build index
 	// ProxyURL format can be like "socks5://agent-id" or contain agent ID
 	var rootAgents []models.Agent
+	parentChildIndex := make(map[string][]models.Agent) // parentID -> children
 
 	for i := range agents {
 		if agents[i].ProxyURL == "" {
@@ -26,12 +28,17 @@ func BuildAgentTree(agents []models.Agent) []models.Agent {
 			// This agent is pivoted through another
 			// Try to extract parent ID from ProxyURL
 			agents[i].ParentID = extractParentID(agents[i].ProxyURL, agentMap)
+			
+			// Add to parent-child index
+			if agents[i].ParentID != "" {
+				parentChildIndex[agents[i].ParentID] = append(parentChildIndex[agents[i].ParentID], agents[i])
+			}
 		}
 	}
 
-	// Build tree structure
+	// Build tree structure using index (O(n) instead of O(n²))
 	for i := range rootAgents {
-		rootAgents[i].Children = findChildren(rootAgents[i].ID, agents)
+		rootAgents[i].Children = buildChildrenFromIndex(rootAgents[i].ID, parentChildIndex)
 	}
 
 	// If no root agents found, return all agents as roots
@@ -55,7 +62,26 @@ func extractParentID(proxyURL string, agentMap map[string]*models.Agent) string 
 	return ""
 }
 
-// findChildren recursively finds all children of a given parent agent
+// buildChildrenFromIndex recursively builds children using pre-built index
+// This is O(n) total across all calls instead of O(n²)
+func buildChildrenFromIndex(parentID string, parentChildIndex map[string][]models.Agent) []models.Agent {
+	children, exists := parentChildIndex[parentID]
+	if !exists {
+		return nil
+	}
+	
+	// Process each child and recursively get their children
+	result := make([]models.Agent, len(children))
+	for i, child := range children {
+		result[i] = child
+		result[i].Children = buildChildrenFromIndex(child.ID, parentChildIndex)
+	}
+	
+	return result
+}
+
+// findChildren is deprecated - kept for backwards compatibility
+// Use buildChildrenFromIndex with parentChildIndex instead
 func findChildren(parentID string, allAgents []models.Agent) []models.Agent {
 	var children []models.Agent
 

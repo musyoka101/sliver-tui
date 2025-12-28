@@ -38,11 +38,24 @@ func (m *model) sampleCurrentActivity() {
 	m.activityTracker.SampleCurrentActivity(m.agents, m.stats)
 }
 
-// updateSubnetOrder builds ordered list of subnets for numbered shortcuts
-func (m *model) updateSubnetOrder() {
-	// Clear existing order
-	m.subnetOrder = []string{}
+// extractSubnet extracts subnet from IP address (e.g., "192.168.1.100" -> "192.168.1.0/24")
+func extractSubnet(remoteAddress string) string {
+	// Extract IP from RemoteAddress (format: "ip:port")
+	ip := remoteAddress
+	if idx := strings.Index(ip, ":"); idx != -1 {
+		ip = ip[:idx]
+	}
 	
+	// Extract subnet (x.x.x.0/24)
+	octets := strings.Split(ip, ".")
+	if len(octets) >= 3 {
+		return fmt.Sprintf("%s.%s.%s.0/24", octets[0], octets[1], octets[2])
+	}
+	return ""
+}
+
+// updateSubnetOrder updates the list of subnets from active agents
+func (m *model) updateSubnetOrder() {
 	// Build subnet map from active agents
 	subnetMap := make(map[string]bool)
 	for _, agent := range m.agents {
@@ -50,21 +63,14 @@ func (m *model) updateSubnetOrder() {
 			continue
 		}
 		
-		// Extract IP from RemoteAddress (format: "ip:port")
-		ip := agent.RemoteAddress
-		if idx := strings.Index(ip, ":"); idx != -1 {
-			ip = ip[:idx]
-		}
-		
-		// Extract subnet (x.x.x.0/24)
-		octets := strings.Split(ip, ".")
-		if len(octets) >= 3 {
-			subnet := fmt.Sprintf("%s.%s.%s.0/24", octets[0], octets[1], octets[2])
+		subnet := extractSubnet(agent.RemoteAddress)
+		if subnet != "" {
 			subnetMap[subnet] = true
 		}
 	}
 	
 	// Convert map to ordered slice
+	m.subnetOrder = make([]string, 0, len(subnetMap))
 	for subnet := range subnetMap {
 		m.subnetOrder = append(m.subnetOrder, subnet)
 	}
@@ -78,6 +84,17 @@ type Agent = models.Agent
 
 // Stats is an alias to models.Stats
 type Stats = models.Stats
+
+// SparklineCache stores pre-rendered sparklines
+type SparklineCache struct {
+	sessionSparkline    string
+	beaconSparkline     string
+	newAgentsSparkline  string
+	privilegedSparkline string
+	timeAxis            string
+	lastSampleCount     int
+	lastUpdate          time.Time
+}
 
 // Model represents the application state
 type model struct {
@@ -102,6 +119,11 @@ type model struct {
 	numberBuffer    string           // Buffer for multi-digit subnet number input
 	alertManager    *alerts.AlertManager // Alert/notification system
 	previousAgents  map[string]Agent // Track previous agent state for change detection
+	
+	// Performance optimization: content caching
+	cachedContent   string // Last rendered content
+	contentDirty    bool   // Flag to force re-render
+	sparklineCache  SparklineCache // Cache for sparkline rendering
 }
 
 func (m model) Init() tea.Cmd {
@@ -131,6 +153,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Toggle to dashboard view directly
 			m.viewIndex = 2 // Dashboard is index 2
 			m.view = config.GetView(m.viewIndex)
+			m.contentDirty = true
 			if m.ready {
 				m.updateViewportContent()
 			}
@@ -140,6 +163,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "t":
 			m.themeIndex = (m.themeIndex + 1) % config.GetThemeCount()
 			m.theme = config.GetTheme(m.themeIndex)
+			m.contentDirty = true
 			// Update viewport content with new theme
 			if m.ready {
 				m.updateViewportContent()
@@ -150,6 +174,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "v":
 			m.viewIndex = (m.viewIndex + 1) % config.GetViewCount()
 			m.view = config.GetView(m.viewIndex)
+			m.contentDirty = true
 			// Update viewport content with new view
 			if m.ready {
 				m.updateViewportContent()
@@ -160,6 +185,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "tab":
 			if m.viewIndex == 2 { // Dashboard view only
 				m.dashboardPage = (m.dashboardPage + 1) % 5 // 5 pages: 0-4
+				m.contentDirty = true
 				if m.ready {
 					m.updateViewportContent()
 				}
@@ -169,6 +195,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "shift+tab":
 			if m.viewIndex == 2 { // Dashboard view only
 				m.dashboardPage = (m.dashboardPage - 1 + 5) % 5 // 5 pages: 0-4
+				m.contentDirty = true
 				if m.ready {
 					m.updateViewportContent()
 				}
@@ -178,6 +205,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "f1":
 			if m.viewIndex == 2 {
 				m.dashboardPage = 0
+				m.contentDirty = true
 				if m.ready {
 					m.updateViewportContent()
 				}
@@ -187,6 +215,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "f2":
 			if m.viewIndex == 2 {
 				m.dashboardPage = 1
+				m.contentDirty = true
 				if m.ready {
 					m.updateViewportContent()
 				}
@@ -196,6 +225,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "f3":
 			if m.viewIndex == 2 {
 				m.dashboardPage = 2
+				m.contentDirty = true
 				if m.ready {
 					m.updateViewportContent()
 				}
@@ -205,6 +235,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "f4":
 			if m.viewIndex == 2 {
 				m.dashboardPage = 3
+				m.contentDirty = true
 				if m.ready {
 					m.updateViewportContent()
 				}
@@ -214,6 +245,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "f5":
 			if m.viewIndex == 2 {
 				m.dashboardPage = 4
+				m.contentDirty = true
 				if m.ready {
 					m.updateViewportContent()
 				}
@@ -373,6 +405,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		m.lastUpdate = time.Now()
 		m.err = nil
+		m.contentDirty = true // Mark content as needing re-render
 		
 		// Sample activity immediately when agents are fetched
 		m.sampleCurrentActivity()
@@ -392,6 +425,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case activitySampleMsg:
 		// Sample activity when timer triggers
 		m.sampleCurrentActivity()
+		m.contentDirty = true // Mark for dashboard refresh
 		// Schedule next sample
 		cmds = append(cmds, sampleActivityCmd)
 
@@ -399,6 +433,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Update pulse animation state for critical alerts
 		if m.alertManager != nil {
 			m.alertManager.UpdatePulse()
+			m.contentDirty = true // Mark for alert panel refresh
 			// Update viewport to show new pulse state
 			if m.ready {
 				m.updateViewportContent()
@@ -2007,11 +2042,33 @@ func (m model) renderSparklinePanel() string {
 	// Calculate statistics
 	stats := calculateActivityStats(samples)
 	
-	// Generate sparklines with proper time mapping
-	sessionsSparkline := generateHistoricalSparkline(samples, "sessions", sparklineWidth)
-	beaconsSparkline := generateHistoricalSparkline(samples, "beacons", sparklineWidth)
-	newSparkline := generateHistoricalSparkline(samples, "new", sparklineWidth)
-	privilegedSparkline := generateHistoricalSparkline(samples, "privileged", sparklineWidth)
+	// Use cached sparklines if available and samples haven't changed
+	var sessionsSparkline, beaconsSparkline, newSparkline, privilegedSparkline, timeAxis string
+	if m.sparklineCache.lastSampleCount == len(samples) && 
+	   time.Since(m.sparklineCache.lastUpdate) < 30*time.Second {
+		// Use cached sparklines
+		sessionsSparkline = m.sparklineCache.sessionSparkline
+		beaconsSparkline = m.sparklineCache.beaconSparkline
+		newSparkline = m.sparklineCache.newAgentsSparkline
+		privilegedSparkline = m.sparklineCache.privilegedSparkline
+		timeAxis = m.sparklineCache.timeAxis
+	} else {
+		// Generate new sparklines and cache them
+		sessionsSparkline = generateHistoricalSparkline(samples, "sessions", sparklineWidth)
+		beaconsSparkline = generateHistoricalSparkline(samples, "beacons", sparklineWidth)
+		newSparkline = generateHistoricalSparkline(samples, "new", sparklineWidth)
+		privilegedSparkline = generateHistoricalSparkline(samples, "privileged", sparklineWidth)
+		timeAxis = generateTimeAxis(samples, sparklineWidth, m.activityTracker.StartTime)
+		
+		// Update cache
+		m.sparklineCache.sessionSparkline = sessionsSparkline
+		m.sparklineCache.beaconSparkline = beaconsSparkline
+		m.sparklineCache.newAgentsSparkline = newSparkline
+		m.sparklineCache.privilegedSparkline = privilegedSparkline
+		m.sparklineCache.timeAxis = timeAxis
+		m.sparklineCache.lastSampleCount = len(samples)
+		m.sparklineCache.lastUpdate = time.Now()
+	}
 	
 	// Sessions
 	lines = append(lines, fmt.Sprintf("%s  %s  Peak: %-2d  Now: %-2d",
@@ -2043,8 +2100,7 @@ func (m model) renderSparklinePanel() string {
 	
 	lines = append(lines, "")
 	
-	// Time axis (aligned with sparkline)
-	timeAxis := generateTimeAxis(samples, sparklineWidth, m.activityTracker.StartTime)
+	// Time axis (aligned with sparkline) - use cached value
 	lines = append(lines, mutedStyle.Render(timeAxis))
 	
 	lines = append(lines, "")
@@ -2349,80 +2405,92 @@ func max(a, b int) int {
 
 // updateViewportContent updates the viewport with the current agent list
 func (m *model) updateViewportContent() {
-	// Check if we're in dashboard view
-	if m.view.Type == config.ViewTypeDashboard {
-		m.viewport.SetContent(m.renderDashboard())
+	// Skip re-render if content hasn't changed (unless forced)
+	if !m.contentDirty && m.cachedContent != "" {
 		return
 	}
 	
-	// Render agents to string
-	agentLines := m.renderAgents()
+	var content string
 	
-	// Logo definition
-	logo := []string{
-		"    🔥🔥     ",
-		"  ▄▄▄▄▄▄▄   ",
-		"  █ C2  █   ",
-		"  █▓▓▓▓▓█   ",
-		"  ▀▀▀▀▀▀▀   ",
-	}
-	
-	logoStyle := lipgloss.NewStyle().Foreground(m.theme.LogoColor).Bold(true)
-	
-	var contentLines []string
-	
-	if m.view.Type == config.ViewTypeTree {
-		// Tree view: Logo on left, agents on right with connectors from logo area
-		logoStart := 0 // Start logo from the top
-		if len(agentLines) > len(logo) {
-			// If there are more agent lines than logo lines, center the logo
-			logoStart = (len(agentLines) - len(logo)) / 2
-		}
-		
-		// Build lines with logo on left and agents on right
-		maxLines := len(agentLines)
-		if len(logo) > maxLines {
-			maxLines = len(logo)
-		}
-		
-		for i := 0; i < maxLines; i++ {
-			var logoLine string
-			if i >= logoStart && i < logoStart+len(logo) {
-				logoLine = logoStyle.Render(logo[i-logoStart])
-			} else {
-				logoLine = strings.Repeat(" ", 12)
-			}
-			
-			var agentLine string
-			if i < len(agentLines) {
-				agentLine = agentLines[i]
-			}
-			
-			contentLines = append(contentLines, " "+logoLine+"  "+agentLine)
-		}
+	// Check if we're in dashboard view
+	if m.view.Type == config.ViewTypeDashboard {
+		content = m.renderDashboard()
 	} else {
-		// Box view: Logo at top with vertical line starting from bottom
-		connectorColor := m.theme.TacticalBorder
+		// Render agents to string
+		agentLines := m.renderAgents()
 		
-		// Render logo with padding
-		for _, logoLine := range logo {
-			contentLines = append(contentLines, "      "+logoStyle.Render(logoLine))
+		// Logo definition
+		logo := []string{
+			"    🔥🔥     ",
+			"  ▄▄▄▄▄▄▄   ",
+			"  █ C2  █   ",
+			"  █▓▓▓▓▓█   ",
+			"  ▀▀▀▀▀▀▀   ",
 		}
 		
-		// Start vertical line from bottom of logo
-		vlinePrefix := "            " // 12 spaces to position line under logo
-		contentLines = append(contentLines, vlinePrefix+lipgloss.NewStyle().Foreground(connectorColor).Render("│"))
-		contentLines = append(contentLines, vlinePrefix+lipgloss.NewStyle().Foreground(connectorColor).Render("│"))
+		logoStyle := lipgloss.NewStyle().Foreground(m.theme.LogoColor).Bold(true)
 		
-		// Add boxes with arrows pointing from the vertical line
-		// Need to add prefix to boxes to align with the vertical line
-		for _, agentLine := range agentLines {
-			contentLines = append(contentLines, vlinePrefix+agentLine)
+		var contentLines []string
+		
+		if m.view.Type == config.ViewTypeTree {
+			// Tree view: Logo on left, agents on right with connectors from logo area
+			logoStart := 0 // Start logo from the top
+			if len(agentLines) > len(logo) {
+				// If there are more agent lines than logo lines, center the logo
+				logoStart = (len(agentLines) - len(logo)) / 2
+			}
+			
+			// Build lines with logo on left and agents on right
+			maxLines := len(agentLines)
+			if len(logo) > maxLines {
+				maxLines = len(logo)
+			}
+			
+			for i := 0; i < maxLines; i++ {
+				var logoLine string
+				if i >= logoStart && i < logoStart+len(logo) {
+					logoLine = logoStyle.Render(logo[i-logoStart])
+				} else {
+					logoLine = strings.Repeat(" ", 12)
+				}
+				
+				var agentLine string
+				if i < len(agentLines) {
+					agentLine = agentLines[i]
+				}
+				
+				contentLines = append(contentLines, " "+logoLine+"  "+agentLine)
+			}
+		} else {
+			// Box view: Logo at top with vertical line starting from bottom
+			connectorColor := m.theme.TacticalBorder
+			
+			// Render logo with padding
+			for _, logoLine := range logo {
+				contentLines = append(contentLines, "      "+logoStyle.Render(logoLine))
+			}
+			
+			// Start vertical line from bottom of logo
+			vlinePrefix := "            " // 12 spaces to position line under logo
+			contentLines = append(contentLines, vlinePrefix+lipgloss.NewStyle().Foreground(connectorColor).Render("│"))
+			contentLines = append(contentLines, vlinePrefix+lipgloss.NewStyle().Foreground(connectorColor).Render("│"))
+			
+			// Add boxes with arrows pointing from the vertical line
+			// Need to add prefix to boxes to align with the vertical line
+			for _, agentLine := range agentLines {
+				contentLines = append(contentLines, vlinePrefix+agentLine)
+			}
 		}
+		
+		content = strings.Join(contentLines, "\n")
 	}
+	
+	// Cache the rendered content
+	m.cachedContent = content
+	m.contentDirty = false
 	
 	// Set viewport content
-	m.viewport.SetContent(strings.Join(contentLines, "\n"))
+	m.viewport.SetContent(content)
 }
 
 // renderAgentInView renders an agent based on the current view type
