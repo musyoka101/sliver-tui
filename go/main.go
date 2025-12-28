@@ -119,6 +119,7 @@ type model struct {
 	numberBuffer    string           // Buffer for multi-digit subnet number input
 	alertManager    *alerts.AlertManager // Alert/notification system
 	previousAgents  map[string]Agent // Track previous agent state for change detection
+	animationFrame  int              // Frame counter for animations (arrows, etc.)
 	
 	// Performance optimization: content caching
 	cachedContent   string // Last rendered content
@@ -132,6 +133,7 @@ func (m model) Init() tea.Cmd {
 		fetchAgentsCmd,
 		sampleActivityCmd, // Start activity sampling timer
 		pulseTimerCmd,     // Start pulse animation timer for alerts
+		animationTickCmd,  // Start animation frame timer for flowing arrows
 	)
 }
 
@@ -437,6 +439,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Schedule next pulse update
 		cmds = append(cmds, pulseTimerCmd)
+
+	case animationTickMsg:
+		// Update animation frame for flowing arrows
+		m.animationFrame++
+		if m.animationFrame > 3 {
+			m.animationFrame = 0
+		}
+		// Only mark dirty and update if we're on Network Map or Box view
+		if m.view.Type == config.ViewTypeNetworkMap || m.view.Type == config.ViewTypeBox {
+			m.contentDirty = true
+			if m.ready {
+				m.updateViewportContent()
+			}
+		}
+		// Schedule next animation tick
+		cmds = append(cmds, animationTickCmd)
 
 	case refreshMsg:
 		m.loading = true
@@ -1174,6 +1192,18 @@ type SubnetGroup struct {
 	PivotParent string
 }
 
+// getAnimatedArrow returns an animated arrow character based on frame
+func (m model) getAnimatedArrow() string {
+	arrows := []string{"▼", "▽", "▿", "˅"}
+	return arrows[m.animationFrame%len(arrows)]
+}
+
+// getAnimatedHorizontalArrow returns an animated horizontal arrow based on frame
+func (m model) getAnimatedHorizontalArrow() string {
+	arrows := []string{"▶", "▷", "▹", "›"}
+	return arrows[m.animationFrame%len(arrows)]
+}
+
 // renderNetworkMapView renders the network topology map with subnet-based layout
 func (m model) renderNetworkMapView() string {
 	var content strings.Builder
@@ -1278,7 +1308,7 @@ func (m model) renderNetworkMapView() string {
 			content.WriteString(mutedStyle.Render("                         │"))
 			content.WriteString("\n")
 			content.WriteString(leftPadding)
-			content.WriteString(mutedStyle.Render("                         ▼"))
+			content.WriteString(mutedStyle.Render("                         " + m.getAnimatedArrow()))
 			content.WriteString("\n")
 		} else {
 			// Multiple subnets - branch out
@@ -1309,12 +1339,13 @@ func (m model) renderNetworkMapView() string {
 			content.WriteString("\n")
 			
 			// Downward arrows
-			arrowTips := "       ▼                   "
+			arrow := m.getAnimatedArrow()
+			arrowTips := "       " + arrow + "                   "
 			for i := 1; i < numBranches-1; i++ {
-				arrowTips += "▼                          "
+				arrowTips += arrow + "                          "
 			}
 			if numBranches > 1 {
-				arrowTips += "▼                   ▼"
+				arrowTips += arrow + "                   " + arrow
 			}
 			content.WriteString(leftPadding)
 			content.WriteString(mutedStyle.Render(arrowTips))
@@ -2989,7 +3020,7 @@ func (m model) renderAgentTreeWithViewAndContext(agent Agent, depth int, viewTyp
 			
 			// Add vertical line and L-shaped connector before the box
 			lines = append(lines, indent+lipgloss.NewStyle().Foreground(connectorColor).Render("   │"))
-			lines = append(lines, indent+lipgloss.NewStyle().Foreground(connectorColor).Render("   ╰──▶ ")+agentLines[0])
+			lines = append(lines, indent+lipgloss.NewStyle().Foreground(connectorColor).Render("   ╰──"+m.getAnimatedHorizontalArrow()+" ")+agentLines[0])
 			
 			// Indent remaining box lines
 			for i := 1; i < len(agentLines); i++ {
@@ -3006,11 +3037,11 @@ func (m model) renderAgentTreeWithViewAndContext(agent Agent, depth int, viewTyp
 				if i == middleLine {
 					// Middle line: add T-junction with arrow pointing right
 					if !isLastChild {
-						connector := lipgloss.NewStyle().Foreground(connectorColor).Render("├──────────────▶ ")
+						connector := lipgloss.NewStyle().Foreground(connectorColor).Render("├──────────────"+m.getAnimatedHorizontalArrow()+" ")
 						lines = append(lines, connector+boxLine)
 					} else {
 						// Last box: use corner
-						connector := lipgloss.NewStyle().Foreground(connectorColor).Render("╰──────────────▶ ")
+						connector := lipgloss.NewStyle().Foreground(connectorColor).Render("╰──────────────"+m.getAnimatedHorizontalArrow()+" ")
 						lines = append(lines, connector+boxLine)
 					}
 				} else {
@@ -3266,6 +3297,8 @@ type activitySampleMsg struct{}
 
 type pulseTimerMsg struct{}
 
+type animationTickMsg struct{}
+
 type errMsg struct {
 	err error
 }
@@ -3300,6 +3333,12 @@ func sampleActivityCmd() tea.Msg {
 func pulseTimerCmd() tea.Msg {
 	time.Sleep(500 * time.Millisecond) // Pulse every 500ms
 	return pulseTimerMsg{}
+}
+
+// animationTickCmd triggers animation frame updates (arrows, etc.)
+func animationTickCmd() tea.Msg {
+	time.Sleep(150 * time.Millisecond) // Update animation every 150ms
+	return animationTickMsg{}
 }
 
 func main() {
