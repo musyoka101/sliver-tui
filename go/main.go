@@ -175,7 +175,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		
-		case "ctrl+1":
+		case "f1":
 			if m.viewIndex == 2 {
 				m.dashboardPage = 0
 				if m.ready {
@@ -184,7 +184,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		
-		case "ctrl+2":
+		case "f2":
 			if m.viewIndex == 2 {
 				m.dashboardPage = 1
 				if m.ready {
@@ -193,7 +193,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		
-		case "ctrl+3":
+		case "f3":
 			if m.viewIndex == 2 {
 				m.dashboardPage = 2
 				if m.ready {
@@ -202,7 +202,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		
-		case "ctrl+4":
+		case "f4":
 			if m.viewIndex == 2 {
 				m.dashboardPage = 3
 				if m.ready {
@@ -211,7 +211,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		
-		case "ctrl+5":
+		case "f5":
 			if m.viewIndex == 2 {
 				m.dashboardPage = 4
 				if m.ready {
@@ -1165,9 +1165,9 @@ func (m model) renderDashboard() string {
 	var pageTabs []string
 	for i, name := range pageNames {
 		if i == m.dashboardPage {
-			pageTabs = append(pageTabs, currentPageStyle.Render(fmt.Sprintf("[%d:%s]", i+1, name)))
+			pageTabs = append(pageTabs, currentPageStyle.Render(fmt.Sprintf("[F%d:%s]", i+1, name)))
 		} else {
-			pageTabs = append(pageTabs, pageStyle.Render(fmt.Sprintf(" %d:%s ", i+1, name)))
+			pageTabs = append(pageTabs, pageStyle.Render(fmt.Sprintf(" F%d:%s ", i+1, name)))
 		}
 	}
 	
@@ -1175,7 +1175,7 @@ func (m model) renderDashboard() string {
 	content.WriteString("  ")
 	content.WriteString(strings.Join(pageTabs, " "))
 	content.WriteString("\n")
-	content.WriteString(pageStyle.Render("Navigate: Tab/Shift+Tab or Ctrl+1-5"))
+	content.WriteString(pageStyle.Render("Navigate: Tab/Shift+Tab or F1-F5"))
 	content.WriteString("\n\n")
 	
 	// Render different pages based on dashboardPage
