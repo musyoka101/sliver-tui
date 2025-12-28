@@ -12,6 +12,7 @@ const (
 	ViewTypeTree ViewType = iota // Current tree layout with arrows
 	ViewTypeBox                  // Compact box with side connectors
 	ViewTypeDashboard            // Dashboard with analytics panels
+	ViewTypeNetworkMap           // Network topology map with subnet grouping
 )
 
 // GetView returns a view by index
@@ -20,11 +21,12 @@ func GetView(index int) View {
 		{Name: "Tree", Type: ViewTypeTree},
 		{Name: "Box", Type: ViewTypeBox},
 		{Name: "Dashboard", Type: ViewTypeDashboard},
+		{Name: "Network Map", Type: ViewTypeNetworkMap},
 	}
 	return views[index]
 }
 
 // GetViewCount returns the total number of available views
 func GetViewCount() int {
-	return 3
+	return 4
 }

@@ -252,9 +252,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		
-		// Expand/collapse subnets in network topology (dashboard view only)
+		// Expand/collapse subnets in network topology (dashboard and network map views)
 		case "e":
-			if m.viewIndex == 2 { // Dashboard view
+			if m.view.Type == config.ViewTypeDashboard || m.view.Type == config.ViewTypeNetworkMap {
 				// Toggle all subnets
 				allExpanded := true
 				for subnet := range m.expandedSubnets {
@@ -276,19 +276,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						if agent.IsDead {
 							continue
 						}
-						ip := agent.RemoteAddress
-						if idx := strings.Index(ip, ":"); idx != -1 {
-							ip = ip[:idx]
-						}
-						octets := strings.Split(ip, ".")
-						if len(octets) >= 3 {
-							subnet := fmt.Sprintf("%s.%s.%s.0/24", octets[0], octets[1], octets[2])
+						subnet := extractSubnet(agent.RemoteAddress)
+						if subnet != "" {
 							m.expandedSubnets[subnet] = true
 						}
 					}
 				}
 				
-				// Update viewport
+				// Mark content as dirty and update viewport
+				m.contentDirty = true
 				if m.ready {
 					m.updateViewportContent()
 				}
@@ -1168,6 +1164,374 @@ func (m model) renderTacticalPanel() string {
 	}
 	
 	return rendered
+}
+
+// SubnetGroup represents a group of agents in the same subnet
+type SubnetGroup struct {
+	Subnet      string
+	Agents      []Agent
+	HasPivots   bool
+	PivotParent string
+}
+
+// renderNetworkMapView renders the network topology map with subnet-based layout
+func (m model) renderNetworkMapView() string {
+	var content strings.Builder
+	
+	// Calculate left padding for centering (approximate content width ~80 chars)
+	leftPadding := ""
+	if m.termWidth > 90 {
+		padding := (m.termWidth - 80) / 2
+		if padding > 0 {
+			leftPadding = strings.Repeat(" ", padding)
+		}
+	}
+	
+	// Header
+	headerStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TitleColor).
+		Bold(true)
+	
+	mutedStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TacticalMuted)
+	
+	// Group agents by subnet
+	subnetGroups := make(map[string]*SubnetGroup)
+	var subnets []string
+	
+	// Get C2 servers
+	c2Servers := make(map[string]int)
+	for _, agent := range m.agents {
+		if agent.IsDead {
+			continue
+		}
+		c2URL := agent.ActiveC2
+		if c2URL == "" {
+			c2URL = "Unknown C2"
+		}
+		c2Servers[c2URL]++
+	}
+	
+	// Group agents by subnet
+	for _, agent := range m.agents {
+		subnet := extractSubnet(agent.RemoteAddress)
+		if subnet == "" {
+			subnet = "Unknown"
+		}
+		
+		if _, exists := subnetGroups[subnet]; !exists {
+			subnetGroups[subnet] = &SubnetGroup{
+				Subnet: subnet,
+				Agents: []Agent{},
+			}
+			subnets = append(subnets, subnet)
+		}
+		
+		subnetGroups[subnet].Agents = append(subnetGroups[subnet].Agents, agent)
+		
+		// Check if any agent in this subnet is pivoted
+		if agent.ProxyURL != "" {
+			subnetGroups[subnet].HasPivots = true
+		}
+	}
+	
+	sort.Strings(subnets)
+	
+	// Initialize expandedSubnets map for all subnets (default to collapsed)
+	for _, subnet := range subnets {
+		if _, exists := m.expandedSubnets[subnet]; !exists {
+			m.expandedSubnets[subnet] = false // Default to collapsed
+		}
+	}
+	
+	// Render title
+	content.WriteString(leftPadding)
+	content.WriteString(headerStyle.Render("🗺️  NETWORK TOPOLOGY MAP"))
+	content.WriteString("  ")
+	content.WriteString(mutedStyle.Render(fmt.Sprintf("%d Subnets | %d Agents", 
+		len(subnets), len(m.agents))))
+	content.WriteString("\n\n")
+	
+	// Render C2 infrastructure box (with padding)
+	c2Box := m.renderC2Box(c2Servers)
+	for _, line := range strings.Split(c2Box, "\n") {
+		content.WriteString(leftPadding + line + "\n")
+	}
+	
+	// Render connection lines from C2 to subnets
+	if len(subnets) > 0 {
+		// Vertical line down from C2
+		centerLine := "                         │"
+		content.WriteString(leftPadding)
+		content.WriteString(mutedStyle.Render(centerLine))
+		content.WriteString("\n")
+		
+		// Calculate number of branches (max 3 per row)
+		numBranches := len(subnets)
+		if numBranches > 3 {
+			numBranches = 3
+		}
+		
+		if numBranches == 1 {
+			// Single subnet - straight line down with arrow
+			content.WriteString(leftPadding)
+			content.WriteString(mutedStyle.Render("                         │"))
+			content.WriteString("\n")
+			content.WriteString(leftPadding)
+			content.WriteString(mutedStyle.Render("                         ▼"))
+			content.WriteString("\n")
+		} else {
+			// Multiple subnets - branch out
+			// Branch line with T-junctions
+			branchLine := "       ┌─────────┴─────────"
+			
+			for i := 1; i < numBranches-1; i++ {
+				branchLine += "┬" + strings.Repeat("─", 26)
+			}
+			if numBranches > 1 {
+				branchLine += "┬" + strings.Repeat("─", 18) + "┐"
+			}
+			
+			content.WriteString(leftPadding)
+			content.WriteString(mutedStyle.Render(branchLine))
+			content.WriteString("\n")
+			
+			// Vertical lines down to boxes
+			arrowLine := "       │                   "
+			for i := 1; i < numBranches-1; i++ {
+				arrowLine += "│                          "
+			}
+			if numBranches > 1 {
+				arrowLine += "│                   │"
+			}
+			content.WriteString(leftPadding)
+			content.WriteString(mutedStyle.Render(arrowLine))
+			content.WriteString("\n")
+			
+			// Downward arrows
+			arrowTips := "       ▼                   "
+			for i := 1; i < numBranches-1; i++ {
+				arrowTips += "▼                          "
+			}
+			if numBranches > 1 {
+				arrowTips += "▼                   ▼"
+			}
+			content.WriteString(leftPadding)
+			content.WriteString(mutedStyle.Render(arrowTips))
+			content.WriteString("\n")
+		}
+	}
+	
+	// Render subnet boxes in rows (max 3 per row)
+	for i := 0; i < len(subnets); i += 3 {
+		var boxes []string
+		
+		for j := 0; j < 3 && i+j < len(subnets); j++ {
+			subnet := subnets[i+j]
+			group := subnetGroups[subnet]
+			boxes = append(boxes, m.renderSubnetBox(group))
+		}
+		
+		// Join boxes horizontally and add left padding
+		joinedBoxes := m.joinBoxesHorizontally(boxes)
+		for _, line := range strings.Split(joinedBoxes, "\n") {
+			content.WriteString(leftPadding + line + "\n")
+		}
+	}
+	
+	// Navigation help
+	content.WriteString("\n")
+	content.WriteString(leftPadding)
+	content.WriteString(mutedStyle.Render("  Navigation: V - Cycle Views | E - Expand Subnets | Q - Quit"))
+	
+	return content.String()
+}
+
+// renderC2Box renders the C2 infrastructure box
+func (m model) renderC2Box(c2Servers map[string]int) string {
+	boxStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.theme.TitleColor).
+		Padding(0, 1).
+		Width(50).
+		Align(lipgloss.Center)
+	
+	titleStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TitleColor).
+		Bold(true)
+	
+	var lines []string
+	lines = append(lines, titleStyle.Render("🔥 C2 INFRASTRUCTURE"))
+	
+	for server, count := range c2Servers {
+		lines = append(lines, fmt.Sprintf("%s (%d agents)", server, count))
+	}
+	
+	return boxStyle.Render(strings.Join(lines, "\n"))
+}
+
+// renderSubnetBox renders a single subnet group box
+func (m model) renderSubnetBox(group *SubnetGroup) string {
+	// Check if this subnet is expanded
+	isExpanded := m.expandedSubnets[group.Subnet]
+	
+	// Adjust height based on expansion state
+	boxHeight := 10
+	if isExpanded && len(group.Agents) > 4 {
+		boxHeight = 8 + len(group.Agents) // Dynamic height for expanded view
+		if boxHeight > 20 {
+			boxHeight = 20 // Max height
+		}
+	}
+	
+	boxStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.theme.TacticalBorder).
+		Padding(1, 2).
+		Width(24).
+		Height(boxHeight)
+	
+	titleStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TitleColor).
+		Bold(true)
+	
+	mutedStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TacticalMuted)
+	
+	var lines []string
+	
+	// Title with subnet and expand/collapse indicator
+	expandIndicator := "▶" // Collapsed
+	if isExpanded {
+		expandIndicator = "▼" // Expanded
+	}
+	lines = append(lines, titleStyle.Render(expandIndicator+" "+group.Subnet))
+	lines = append(lines, mutedStyle.Render(strings.Repeat("─", 20)))
+	
+	// Count agents by type
+	sessionCount := 0
+	beaconCount := 0
+	privilegedCount := 0
+	deadCount := 0
+	
+	for _, agent := range group.Agents {
+		if agent.IsDead {
+			deadCount++
+		} else if agent.IsSession {
+			sessionCount++
+		} else {
+			beaconCount++
+		}
+		if agent.IsPrivileged {
+			privilegedCount++
+		}
+	}
+	
+	// Show agents based on expansion state
+	maxShow := 4
+	if isExpanded {
+		maxShow = len(group.Agents) // Show all when expanded
+		if maxShow > 15 {
+			maxShow = 15 // Reasonable limit
+		}
+	}
+	
+	for i, agent := range group.Agents {
+		if i >= maxShow {
+			remaining := len(group.Agents) - maxShow
+			lines = append(lines, mutedStyle.Render(fmt.Sprintf("  ... +%d more", remaining)))
+			break
+		}
+		
+		icon := "◇"
+		color := m.theme.BeaconColor
+		if agent.IsDead {
+			icon = "◇"
+			color = m.theme.DeadColor
+		} else if agent.IsSession {
+			icon = "◆"
+			color = m.theme.SessionColor
+		}
+		
+		privilege := ""
+		if agent.IsPrivileged {
+			privilege = " 💎"
+		}
+		
+		agentStyle := lipgloss.NewStyle().Foreground(color)
+		
+		hostname := agent.Hostname
+		if len(hostname) > 12 {
+			hostname = hostname[:12]
+		}
+		
+		lines = append(lines, fmt.Sprintf("%s %s%s", 
+			agentStyle.Render(icon), 
+			hostname,
+			privilege))
+	}
+	
+	lines = append(lines, "")
+	
+	// Summary line
+	summaryParts := []string{}
+	if sessionCount > 0 {
+		summaryParts = append(summaryParts, fmt.Sprintf("%d◆", sessionCount))
+	}
+	if beaconCount > 0 {
+		summaryParts = append(summaryParts, fmt.Sprintf("%d◇", beaconCount))
+	}
+	if privilegedCount > 0 {
+		summaryParts = append(summaryParts, fmt.Sprintf("%d💎", privilegedCount))
+	}
+	if deadCount > 0 {
+		summaryParts = append(summaryParts, fmt.Sprintf("%d⚠️", deadCount))
+	}
+	
+	if len(summaryParts) > 0 {
+		lines = append(lines, mutedStyle.Render(strings.Join(summaryParts, " ")))
+	}
+	
+	// Pivot indicator
+	if group.HasPivots {
+		lines = append(lines, mutedStyle.Render("🔗 PROXIED"))
+	}
+	
+	return boxStyle.Render(strings.Join(lines, "\n"))
+}
+
+// joinBoxesHorizontally joins multiple box strings side by side
+func (m model) joinBoxesHorizontally(boxes []string) string {
+	if len(boxes) == 0 {
+		return ""
+	}
+	
+	// Split each box into lines
+	boxLines := make([][]string, len(boxes))
+	maxLines := 0
+	
+	for i, box := range boxes {
+		boxLines[i] = strings.Split(box, "\n")
+		if len(boxLines[i]) > maxLines {
+			maxLines = len(boxLines[i])
+		}
+	}
+	
+	// Join lines horizontally
+	var result []string
+	for lineIdx := 0; lineIdx < maxLines; lineIdx++ {
+		var lineParts []string
+		for boxIdx := 0; boxIdx < len(boxLines); boxIdx++ {
+			if lineIdx < len(boxLines[boxIdx]) {
+				lineParts = append(lineParts, boxLines[boxIdx][lineIdx])
+			} else {
+				lineParts = append(lineParts, strings.Repeat(" ", 24)) // Pad empty box space
+			}
+		}
+		result = append(result, "  "+strings.Join(lineParts, "  "))
+	}
+	
+	return strings.Join(result, "\n")
 }
 
 // renderDashboard renders the dashboard view with analytics panels
@@ -2415,6 +2779,8 @@ func (m *model) updateViewportContent() {
 	// Check if we're in dashboard view
 	if m.view.Type == config.ViewTypeDashboard {
 		content = m.renderDashboard()
+	} else if m.view.Type == config.ViewTypeNetworkMap {
+		content = m.renderNetworkMapView()
 	} else {
 		// Render agents to string
 		agentLines := m.renderAgents()
