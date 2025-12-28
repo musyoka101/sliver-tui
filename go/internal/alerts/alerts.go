@@ -22,6 +22,8 @@ type AlertCategory int
 const (
 	CategoryAgentConnected AlertCategory = iota
 	CategoryAgentDisconnected
+	CategorySessionDisconnected  // Session lost
+	CategoryBeaconDisconnected   // Beacon lost
 	CategoryBeaconLate
 	CategoryBeaconMissed
 	CategoryBeaconTaskQueued         // New task assigned to beacon
@@ -240,6 +242,10 @@ func (a Alert) GetLabel() string {
 		return "AGENT ACQUIRED"
 	case CategoryAgentDisconnected:
 		return "AGENT LOST"
+	case CategorySessionDisconnected:
+		return "SESSION LOST"
+	case CategoryBeaconDisconnected:
+		return "BEACON LOST"
 	case CategoryBeaconLate:
 		return "CHECK-IN LATE"
 	case CategoryBeaconMissed:

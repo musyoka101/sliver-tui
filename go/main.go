@@ -403,8 +403,12 @@ func (m *model) detectAgentChanges(newAgents []Agent) {
 	// Detect lost agents (disconnected)
 	for id, oldAgent := range m.previousAgents {
 		if _, exists := newAgentMap[id]; !exists {
-			// Agent disappeared
-			m.alertManager.AddAlert(alerts.AlertCritical, alerts.CategoryAgentDisconnected, "Agent lost", oldAgent.Hostname)
+			// Agent disappeared - differentiate between session and beacon
+			if oldAgent.IsSession {
+				m.alertManager.AddAlert(alerts.AlertCritical, alerts.CategorySessionDisconnected, "Session lost", oldAgent.Hostname)
+			} else {
+				m.alertManager.AddAlert(alerts.AlertCritical, alerts.CategoryBeaconDisconnected, "Beacon lost", oldAgent.Hostname)
+			}
 		}
 	}
 
