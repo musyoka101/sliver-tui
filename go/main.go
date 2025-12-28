@@ -95,6 +95,7 @@ type model struct {
 	theme           config.Theme // Current theme
 	viewIndex       int  // Current view index
 	view            config.View // Current view
+	dashboardPage   int  // Current dashboard page (0-4)
 	activityTracker *ActivityTracker // Activity tracking over time
 	expandedSubnets map[string]bool  // Track which subnets are expanded
 	subnetOrder     []string         // Track subnet display order for numbered shortcuts
@@ -152,6 +153,70 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Update viewport content with new view
 			if m.ready {
 				m.updateViewportContent()
+			}
+			return m, nil
+		
+		// Dashboard page navigation (when in dashboard view)
+		case "tab":
+			if m.viewIndex == 2 { // Dashboard view only
+				m.dashboardPage = (m.dashboardPage + 1) % 5 // 5 pages: 0-4
+				if m.ready {
+					m.updateViewportContent()
+				}
+			}
+			return m, nil
+		
+		case "shift+tab":
+			if m.viewIndex == 2 { // Dashboard view only
+				m.dashboardPage = (m.dashboardPage - 1 + 5) % 5 // 5 pages: 0-4
+				if m.ready {
+					m.updateViewportContent()
+				}
+			}
+			return m, nil
+		
+		case "ctrl+1":
+			if m.viewIndex == 2 {
+				m.dashboardPage = 0
+				if m.ready {
+					m.updateViewportContent()
+				}
+			}
+			return m, nil
+		
+		case "ctrl+2":
+			if m.viewIndex == 2 {
+				m.dashboardPage = 1
+				if m.ready {
+					m.updateViewportContent()
+				}
+			}
+			return m, nil
+		
+		case "ctrl+3":
+			if m.viewIndex == 2 {
+				m.dashboardPage = 2
+				if m.ready {
+					m.updateViewportContent()
+				}
+			}
+			return m, nil
+		
+		case "ctrl+4":
+			if m.viewIndex == 2 {
+				m.dashboardPage = 3
+				if m.ready {
+					m.updateViewportContent()
+				}
+			}
+			return m, nil
+		
+		case "ctrl+5":
+			if m.viewIndex == 2 {
+				m.dashboardPage = 4
+				if m.ready {
+					m.updateViewportContent()
+				}
 			}
 			return m, nil
 		
@@ -1074,38 +1139,181 @@ func (m model) renderTacticalPanel() string {
 func (m model) renderDashboard() string {
 	var content strings.Builder
 	
-	// Dashboard header
+	// Page names
+	pageNames := []string{
+		"OVERVIEW",
+		"NETWORK INTEL", 
+		"OPERATIONS",
+		"SECURITY",
+		"ANALYTICS",
+	}
+	
+	// Dashboard header with page indicator
 	headerStyle := lipgloss.NewStyle().
 		Foreground(m.theme.TitleColor).
 		Bold(true).
-		Underline(true).
-		MarginBottom(1)
+		Underline(true)
 	
-	content.WriteString(headerStyle.Render("📊 DASHBOARD - OPERATIONAL ANALYTICS"))
+	pageStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TacticalMuted)
+	
+	currentPageStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TitleColor).
+		Bold(true)
+	
+	// Build page tabs
+	var pageTabs []string
+	for i, name := range pageNames {
+		if i == m.dashboardPage {
+			pageTabs = append(pageTabs, currentPageStyle.Render(fmt.Sprintf("[%d:%s]", i+1, name)))
+		} else {
+			pageTabs = append(pageTabs, pageStyle.Render(fmt.Sprintf(" %d:%s ", i+1, name)))
+		}
+	}
+	
+	content.WriteString(headerStyle.Render("📊 DASHBOARD"))
+	content.WriteString("  ")
+	content.WriteString(strings.Join(pageTabs, " "))
+	content.WriteString("\n")
+	content.WriteString(pageStyle.Render("Navigate: Tab/Shift+Tab or Ctrl+1-5"))
 	content.WriteString("\n\n")
 	
-	// Create 2-row grid layout for panels (6 panels total)
-	// Top row: C2 Infrastructure | Architecture | Task Queue Monitor
-	// Bottom row: Network Topology | Security Status | Activity Metrics
-	// Note: All panels now have equal width (38 chars) for consistent grid alignment
-	
-	c2Panel := m.renderC2InfrastructurePanel()
-	archPanel := m.renderArchitecturePanel()
-	taskQueuePanel := m.renderTaskQueuePanel()
-	networkPanel := m.renderNetworkTopologyPanel()
-	securityPanel := m.renderSecurityStatusPanel()
-	sparklinePanel := m.renderSparklinePanel()
-	
-	// Use lipgloss JoinHorizontal to place panels side by side
-	topRow := lipgloss.JoinHorizontal(lipgloss.Top, c2Panel, "  ", archPanel, "  ", taskQueuePanel)
-	bottomRow := lipgloss.JoinHorizontal(lipgloss.Top, networkPanel, "  ", securityPanel, "  ", sparklinePanel)
-	
-	content.WriteString(topRow)
-	content.WriteString("\n\n")
-	content.WriteString(bottomRow)
+	// Render different pages based on dashboardPage
+	switch m.dashboardPage {
+	case 0: // Overview
+		content.WriteString(m.renderOverviewPage())
+	case 1: // Network Intel
+		content.WriteString(m.renderNetworkIntelPage())
+	case 2: // Operations
+		content.WriteString(m.renderOperationsPage())
+	case 3: // Security
+		content.WriteString(m.renderSecurityPage())
+	case 4: // Analytics
+		content.WriteString(m.renderAnalyticsPage())
+	}
 	
 	return content.String()
 }
+
+// renderOverviewPage shows quick summary stats
+func (m model) renderOverviewPage() string {
+	// Quick stats panel + recent activity
+	archPanel := m.renderArchitecturePanel()
+	taskQueuePanel := m.renderTaskQueuePanel()
+	sparklinePanel := m.renderSparklinePanel()
+	
+	topRow := lipgloss.JoinHorizontal(lipgloss.Top, archPanel, "  ", taskQueuePanel, "  ", sparklinePanel)
+	
+	// Add a summary panel
+	summaryPanel := m.renderQuickStatsPanel()
+	
+	return topRow + "\n\n" + summaryPanel
+}
+
+// renderNetworkIntelPage shows network topology and C2 infrastructure
+func (m model) renderNetworkIntelPage() string {
+	c2Panel := m.renderC2InfrastructurePanel()
+	networkPanel := m.renderNetworkTopologyPanel()
+	
+	// Could add more network-related panels here
+	topRow := lipgloss.JoinHorizontal(lipgloss.Top, c2Panel, "  ", networkPanel)
+	
+	return topRow
+}
+
+// renderOperationsPage shows task queues and beacon activity  
+func (m model) renderOperationsPage() string {
+	taskQueuePanel := m.renderTaskQueuePanel()
+	
+	// For now, show task queue - can add more operational panels
+	return taskQueuePanel
+}
+
+// renderSecurityPage shows security status and privilege tracking
+func (m model) renderSecurityPage() string {
+	securityPanel := m.renderSecurityStatusPanel()
+	archPanel := m.renderArchitecturePanel()
+	
+	topRow := lipgloss.JoinHorizontal(lipgloss.Top, securityPanel, "  ", archPanel)
+	
+	return topRow
+}
+
+// renderAnalyticsPage shows historical data and trends
+func (m model) renderAnalyticsPage() string {
+	sparklinePanel := m.renderSparklinePanel()
+	
+	// For now just sparklines - can add more analytics panels
+	return sparklinePanel
+}
+
+// renderQuickStatsPanel shows a summary of key metrics
+func (m model) renderQuickStatsPanel() string {
+	panelStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.theme.TacticalBorder).
+		Padding(1, 2).
+		Width(120). // Wide panel for overview
+		Height(10)
+	
+	titleStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TitleColor).
+		Bold(true)
+	
+	labelStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TacticalSection)
+	
+	valueStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TacticalValue).
+		Bold(true)
+	
+	var lines []string
+	lines = append(lines, titleStyle.Render("📈 QUICK STATS"))
+	lines = append(lines, "")
+	
+	// Count stats
+	totalAgents := 0
+	sessions := 0
+	beacons := 0
+	privileged := 0
+	dead := 0
+	
+	for _, agent := range m.agents {
+		totalAgents++
+		if agent.IsDead {
+			dead++
+			continue
+		}
+		if agent.IsSession {
+			sessions++
+		} else {
+			beacons++
+		}
+		if agent.IsPrivileged {
+			privileged++
+		}
+	}
+	
+	activeAgents := totalAgents - dead
+	
+	// Build stats line
+	stats := fmt.Sprintf("%s %s  |  %s %s  |  %s %s  |  %s %s  |  %s %s",
+		labelStyle.Render("Total:"),
+		valueStyle.Render(fmt.Sprintf("%d", activeAgents)),
+		labelStyle.Render("Sessions:"),
+		valueStyle.Render(fmt.Sprintf("%d", sessions)),
+		labelStyle.Render("Beacons:"),
+		valueStyle.Render(fmt.Sprintf("%d", beacons)),
+		labelStyle.Render("Privileged:"),
+		valueStyle.Render(fmt.Sprintf("%d", privileged)),
+		labelStyle.Render("Dead:"),
+		lipgloss.NewStyle().Foreground(m.theme.DeadColor).Bold(true).Render(fmt.Sprintf("%d", dead)))
+	
+	lines = append(lines, stats)
+	
+	return panelStyle.Render(strings.Join(lines, "\n"))
+}
+
 
 // renderC2InfrastructurePanel shows active C2 servers with agent counts
 func (m model) renderC2InfrastructurePanel() string {
