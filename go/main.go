@@ -508,18 +508,6 @@ func (m model) renderAlertPanel() string {
 		}
 	}
 
-	// Panel styling with military aesthetic - expanded width for full alert details
-	panelStyle := lipgloss.NewStyle().
-		Border(lipgloss.DoubleBorder()).
-		BorderForeground(borderColor).
-		Background(m.theme.TacticalPanelBg). // Use theme background
-		Padding(0, 1).
-		Width(70) // Expanded width for full labels and hostnames
-
-	titleStyle := lipgloss.NewStyle().
-		Foreground(m.theme.TacticalBorder). // Use theme color
-		Bold(true)
-
 	// Status indicator
 	statusIndicator := "◉ ACTIVE"
 	statusColor := m.theme.SessionColor // Green from theme
@@ -528,13 +516,37 @@ func (m model) renderAlertPanel() string {
 		statusColor = m.theme.DeadColor // Red from theme
 	}
 
-	// Compact header for 35-char width panel
-	headerLine := fmt.Sprintf("⚠ ALERTS %s",
+	// Build title that will cross the border
+	titleText := fmt.Sprintf(" ⚠ ALERTS %s ",
 		lipgloss.NewStyle().Foreground(statusColor).Bold(true).Render(statusIndicator))
-
+	
+	titleStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TacticalBorder).
+		Bold(true)
+	
+	styledTitle := titleStyle.Render(titleText)
+	titleWidth := lipgloss.Width(titleText) // Actual visible width
+	
+	// Panel width (70 chars content + 2 for padding)
+	panelWidth := 70
+	contentWidth := panelWidth - 2 // Account for left/right padding
+	
+	// Create top border with title crossing through it
+	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
+	leftBorderChars := 3  // "┌──"
+	rightBorderNeeded := contentWidth - titleWidth - leftBorderChars + 2
+	if rightBorderNeeded < 1 {
+		rightBorderNeeded = 1
+	}
+	
+	topBorder := borderStyle.Render("┌" + strings.Repeat("─", leftBorderChars)) +
+		styledTitle +
+		borderStyle.Render(strings.Repeat("─", rightBorderNeeded) + "┐")
+	
+	// Build alert lines
 	var lines []string
-	lines = append(lines, titleStyle.Render(headerLine))
-
+	lines = append(lines, topBorder)
+	
 	// Render each alert
 	for _, alert := range activeAlerts {
 		// Color based on alert type (uses theme colors)
@@ -568,13 +580,11 @@ func (m model) renderAlertPanel() string {
 			agentName = agentName[:25]
 		}
 
-		// Single line format with expanded width: ║█║ 19:45 PRIVILEGED SESSION ACQUIRED hostname
-		// Or with details: ║█║ 19:45 TASK QUEUED hostname (3→4 pending)
 		// Pad label to fixed width (28 chars) so hostnames align in a column
 		labelWidth := 28
 		paddedLabel := fmt.Sprintf("%-*s", labelWidth, label) // Left-align, pad to width
 		
-		alertLine := fmt.Sprintf("%s %s %s %s",
+		alertContent := fmt.Sprintf("%s %s %s %s",
 			lipgloss.NewStyle().Foreground(textColor).Bold(true).Render(icon),
 			lipgloss.NewStyle().Foreground(m.theme.TacticalMuted).Render(timeStr),
 			lipgloss.NewStyle().Foreground(textColor).Bold(true).Render(paddedLabel),
@@ -582,13 +592,29 @@ func (m model) renderAlertPanel() string {
 		
 		// Add details if present (e.g., task counts)
 		if alert.Details != "" {
-			alertLine += lipgloss.NewStyle().Foreground(m.theme.TacticalMuted).Render(" " + alert.Details)
+			alertContent += lipgloss.NewStyle().Foreground(m.theme.TacticalMuted).Render(" " + alert.Details)
 		}
-
+		
+		// Pad content to fit panel width and add side borders
+		contentLen := lipgloss.Width(alertContent)
+		padding := contentWidth - contentLen
+		if padding < 0 {
+			padding = 0
+		}
+		
+		alertLine := borderStyle.Render("│") + " " + alertContent + strings.Repeat(" ", padding) + " " + borderStyle.Render("│")
 		lines = append(lines, alertLine)
 	}
-
-	return panelStyle.Render(strings.Join(lines, "\n"))
+	
+	// Bottom border
+	bottomBorder := borderStyle.Render("└" + strings.Repeat("─", contentWidth+2) + "┘")
+	lines = append(lines, bottomBorder)
+	
+	// Add background color
+	result := strings.Join(lines, "\n")
+	return lipgloss.NewStyle().
+		Background(m.theme.TacticalPanelBg).
+		Render(result)
 }
 
 func (m model) View() string {
