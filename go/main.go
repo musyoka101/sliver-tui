@@ -121,6 +121,7 @@ type model struct {
 	previousAgents  map[string]Agent // Track previous agent state for change detection
 	animationFrame  int              // Frame counter for animations (arrows, etc.)
 	dnsCache        map[string]string // Cache for DNS lookups (IP -> domain)
+	domainCache     map[string]string // Cache for agent domains (sessionID -> domain)
 	
 	// Performance optimization: content caching
 	cachedContent   string // Last rendered content
@@ -417,9 +418,32 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.updateViewportContent()
 		}
 		
+		// Trigger background domain queries for all sessions (non-blocking)
+		for _, agent := range msg.agents {
+			if agent.IsSession && !agent.IsDead {
+				// Check if we already have this domain cached
+				if _, exists := m.domainCache[agent.ID]; !exists {
+					// Launch background query
+					cmds = append(cmds, queryDomainCmd(agent.ID))
+				}
+			}
+		}
+		
 		cmds = append(cmds, tea.Tick(5*time.Second, func(t time.Time) tea.Msg {
 			return refreshMsg{}
 		}))
+
+	case domainQueryMsg:
+		// Domain query completed in background
+		if msg.domain != "" {
+			// Cache the domain result
+			m.domainCache[msg.sessionID] = msg.domain
+			// Mark content dirty to trigger re-render with new domain info
+			m.contentDirty = true
+			if m.ready {
+				m.updateViewportContent()
+			}
+		}
 
 	case activitySampleMsg:
 		// Sample activity when timer triggers
@@ -1051,18 +1075,23 @@ func (m model) renderTacticalPanel() string {
 		// Extract domain using multiple methods (priority order)
 		var domain string
 		
-		// Method 1 (HIGHEST PRIORITY): Use domain queried directly from agent
-		// This is populated by querying USERDNSDOMAIN environment variable from sessions
-		if agent.Domain != "" {
+		// Method 1 (HIGHEST PRIORITY): Use domain from background query cache
+		// This is populated asynchronously by querying USERDNSDOMAIN from sessions
+		if cachedDomain, exists := m.domainCache[agent.ID]; exists {
+			domain = cachedDomain
+		}
+		
+		// Method 2: Use domain field if already populated (legacy/fallback)
+		if domain == "" && agent.Domain != "" {
 			domain = agent.Domain
 		}
 		
-		// Method 2: Extract from hostname if it contains FQDN (e.g., "m3sqlw.m3c.local")
+		// Method 3: Extract from hostname if it contains FQDN (e.g., "m3sqlw.m3c.local")
 		if domain == "" {
 			domain = config.ExtractDomainFromHostname(agent.Hostname)
 		}
 		
-		// Method 3: Perform reverse DNS lookup on IP address to get FQDN (with caching)
+		// Method 4: Perform reverse DNS lookup on IP address to get FQDN (with caching)
 		if domain == "" && agent.RemoteAddress != "" {
 			// Check cache first
 			if cachedDomain, exists := m.dnsCache[agent.RemoteAddress]; exists {
@@ -1075,7 +1104,7 @@ func (m model) renderTacticalPanel() string {
 			}
 		}
 		
-		// Method 4: Fallback to NetBIOS domain from username (Windows: DOMAIN\username)
+		// Method 5: Fallback to NetBIOS domain from username (Windows: DOMAIN\username)
 		// Only use this as last resort if all DNS methods failed
 		if domain == "" && strings.Contains(agent.Username, "\\") {
 			netbiosDomain := strings.Split(agent.Username, "\\")[0]
@@ -3343,6 +3372,11 @@ type pulseTimerMsg struct{}
 
 type animationTickMsg struct{}
 
+type domainQueryMsg struct {
+	sessionID string
+	domain    string
+}
+
 type errMsg struct {
 	err error
 }
@@ -3385,6 +3419,42 @@ func animationTickCmd() tea.Msg {
 	return animationTickMsg{}
 }
 
+// queryDomainCmd queries domain from a session in the background
+func queryDomainCmd(sessionID string) tea.Cmd {
+	return func() tea.Msg {
+		// Connect to Sliver
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		
+		configPath, err := client.FindConfigFile()
+		if err != nil {
+			return domainQueryMsg{sessionID: sessionID, domain: ""}
+		}
+		
+		config, err := client.LoadConfig(configPath)
+		if err != nil {
+			return domainQueryMsg{sessionID: sessionID, domain: ""}
+		}
+		
+		sliverClient := client.NewSliverClient(config)
+		if err := sliverClient.Connect(ctx); err != nil {
+			return domainQueryMsg{sessionID: sessionID, domain: ""}
+		}
+		defer sliverClient.Close()
+		
+		// Query domain with timeout
+		queryCtx, queryCancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer queryCancel()
+		
+		domain := sliverClient.QueryDomainFromSession(queryCtx, sessionID)
+		
+		return domainQueryMsg{
+			sessionID: sessionID,
+			domain:    domain,
+		}
+	}
+}
+
 func main() {
 	// Create spinner
 	s := spinner.New()
@@ -3413,6 +3483,7 @@ func main() {
 		alertManager:    alerts.NewAlertManager(5), // Max 5 visible alerts
 		previousAgents:  make(map[string]Agent), // Initialize agent tracking map
 		dnsCache:        make(map[string]string), // Initialize DNS cache
+		domainCache:     make(map[string]string), // Initialize domain cache (sessionID -> domain)
 	}
 
 	// Create and run program with alt screen

@@ -210,15 +210,8 @@ func ConvertToAgents(sessions []*clientpb.Session, beacons []*clientpb.Beacon, c
 			Burned:        s.Burned,
 		}
 		
-		// Query DNS domain from session (only for active sessions)
-		if client != nil && !s.Burned {
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-			domain := client.queryDomainFromSession(ctx, s.ID)
-			cancel()
-			if domain != "" {
-				agent.Domain = domain
-			}
-		}
+		// Domain will be populated asynchronously in the background
+		// (no blocking queries here to keep UI responsive)
 		
 		agents = append(agents, agent)
 		hostMap[s.Hostname] = true
@@ -342,9 +335,9 @@ func FetchAgents(ctx context.Context) ([]models.Agent, models.Stats, error) {
 
 	return agents, stats, nil
 }
-// queryDomainFromSession queries the DNS domain from a session agent
+// QueryDomainFromSession queries the DNS domain from a session agent (exported for background queries)
 // Returns the DNS domain (e.g., "m3c.local") or empty string if not found
-func (c *SliverClient) queryDomainFromSession(ctx context.Context, sessionID string) string {
+func (c *SliverClient) QueryDomainFromSession(ctx context.Context, sessionID string) string {
 	// Add timeout to prevent hanging
 	queryCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
