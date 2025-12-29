@@ -210,7 +210,7 @@ func matrixTheme() Theme {
 		TacticalBorder:  lipgloss.Color("#00ff41"),
 		TacticalSection: lipgloss.Color("#ffd700"),
 		TacticalValue:   lipgloss.Color("#76ff03"),
-		TacticalMuted:   lipgloss.Color("#2d5016"),
+		TacticalMuted:   lipgloss.Color("#76ff03"), // Changed from #2d5016 to #76ff03 (lime green) for better visibility
 		StatsColor:      lipgloss.Color("#00ff41"),
 		SeparatorColor:  lipgloss.Color("#00ff41"),
 		HelpColor:       lipgloss.Color("#90ee90"),
