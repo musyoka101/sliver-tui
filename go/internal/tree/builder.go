@@ -79,21 +79,3 @@ func buildChildrenFromIndex(parentID string, parentChildIndex map[string][]model
 	
 	return result
 }
-
-// findChildren is deprecated - kept for backwards compatibility
-// Use buildChildrenFromIndex with parentChildIndex instead
-func findChildren(parentID string, allAgents []models.Agent) []models.Agent {
-	var children []models.Agent
-
-	for _, agent := range allAgents {
-		if agent.ParentID == parentID {
-			// This agent is a child of parentID
-			child := agent
-			// Recursively find this child's children
-			child.Children = findChildren(child.ID, allAgents)
-			children = append(children, child)
-		}
-	}
-
-	return children
-}

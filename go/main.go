@@ -2869,31 +2869,9 @@ func formatDuration(d time.Duration) string {
 	return fmt.Sprintf("%dm", minutes)
 }
 
-// generateSparkline generates a simple bar graph
-func generateSparkline(value, maxValue, width int) string {
-	if maxValue == 0 {
-		return strings.Repeat("░", width)
-	}
-	
-	filled := int(float64(value) / float64(maxValue) * float64(width))
-	if filled > width {
-		filled = width
-	}
-	
-	return strings.Repeat("█", filled) + strings.Repeat("░", width-filled)
-}
-
 // min returns the minimum of two integers
 func min(a, b int) int {
 	if a < b {
-		return a
-	}
-	return b
-}
-
-// max returns the maximum of two integers
-func max(a, b int) int {
-	if a > b {
 		return a
 	}
 	return b
@@ -3100,11 +3078,6 @@ func (m model) renderAgentBox(agent Agent) []string {
 	return lines
 }
 
-// renderAgentTreeWithView renders agent tree with view-specific formatting
-func (m model) renderAgentTreeWithView(agent Agent, depth int, viewType config.ViewType) []string {
-	return m.renderAgentTreeWithViewAndContext(agent, depth, viewType, false, false)
-}
-
 // renderAgentTreeWithViewAndContext renders agent tree with context about siblings
 func (m model) renderAgentTreeWithViewAndContext(agent Agent, depth int, viewType config.ViewType, hasNextSibling bool, isLastChild bool) []string {
 	var lines []string
@@ -3204,43 +3177,6 @@ func (m model) renderAgents() []string {
 		lines = append(lines, m.renderAgentTreeWithViewAndContext(agent, 0, m.view.Type, hasNext, !hasNext)...)
 	}
 
-	return lines
-}
-
-func (m model) renderAgentTree(agent Agent, depth int) []string {
-	var lines []string
-	
-	// Render current agent (returns 3 lines now)
-	indent := strings.Repeat("  ", depth)
-	agentLines := m.renderAgentLine(agent)
-	
-	if depth > 0 {
-		// Add tree connector for child agents with better styling
-		connector := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#6272a4")).
-			Render("  ╰─")
-		
-		// First line gets the connector
-		agentLines[0] = indent + connector + agentLines[0]
-		// Second and third lines get matching indentation
-		agentLines[1] = indent + "    " + agentLines[1]
-		agentLines[2] = indent + "    " + agentLines[2]
-	}
-	
-	// Add all lines
-	lines = append(lines, agentLines...)
-	
-	// Add spacing between agents at root level
-	if depth == 0 && len(agent.Children) == 0 {
-		lines = append(lines, "")
-	}
-	
-	// Recursively render children
-	for _, child := range agent.Children {
-		childLines := m.renderAgentTree(child, depth+1)
-		lines = append(lines, childLines...)
-	}
-	
 	return lines
 }
 
