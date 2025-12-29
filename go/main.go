@@ -839,32 +839,103 @@ func (m model) View() string {
 		}
 	}
 	
-	// Build footer (stats + help)
+	// Build footer (stats + help) with better styling
 	var footerLines []string
-	footerLines = append(footerLines, "")
-	separatorStyle := lipgloss.NewStyle().Foreground(m.theme.SeparatorColor)
-	footerLines = append(footerLines, separatorStyle.Render(strings.Repeat("─", 90)))
-	footerLines = append(footerLines, "")
 	
-	statsStyle := lipgloss.NewStyle().Foreground(m.theme.StatsColor).Bold(true).Padding(0, 1)
-	statsLine := fmt.Sprintf("🟢 Sessions: %d  │  🟡 Beacons: %d  │  🔵 Total: %d",
-		m.stats.Sessions, m.stats.Beacons, m.stats.Compromised)
-	footerLines = append(footerLines, statsStyle.Render(statsLine))
-	
-	lostCount := tracking.GetLostAgentsCount()
-	
-	if lostCount > 0 {
-		lostLine := fmt.Sprintf("  ⚠️  Recently Lost: %d (displayed for %d min)",
-			lostCount, int(tracking.GetLostAgentTimeout().Minutes()))
-		footerLines = append(footerLines, lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#ff9900")).
-			Italic(true).
-			Padding(0, 1).
-			Render(lostLine))
-		footerLines = append(footerLines, "") // Add empty line for spacing
+	// Remove any trailing separator lines from content that might conflict with our box
+	if len(contentLines) > 0 {
+		lastLine := contentLines[len(contentLines)-1]
+		// Check if last line is a separator (all dashes or empty)
+		trimmed := strings.TrimSpace(lastLine)
+		if trimmed == "" || strings.Trim(trimmed, "─━═") == "" {
+			contentLines = contentLines[:len(contentLines)-1]
+		}
 	}
 	
-	// Show number buffer indicator if user is typing a subnet number
+	// Calculate separator width based on terminal width (with fallback)
+	// Leave room for tactical panel on the right (about 40 chars)
+	tacticalPanelSpace := 40
+	separatorWidth := m.termWidth - tacticalPanelSpace
+	if separatorWidth < 80 {
+		separatorWidth = 80
+	}
+	if separatorWidth > 120 {
+		separatorWidth = 120
+	}
+	
+	separatorStyle := lipgloss.NewStyle().Foreground(m.theme.SeparatorColor)
+	
+	// Top border with corner: ┌───────┐
+	topBorder := fmt.Sprintf("%s%s%s",
+		separatorStyle.Render("┌"),
+		separatorStyle.Render(strings.Repeat("─", separatorWidth-2)),
+		separatorStyle.Render("┐"))
+	footerLines = append(footerLines, topBorder)
+	
+	// Line 1: Stats (with optional "Recently Lost" inline and vertical borders)
+	lostCount := tracking.GetLostAgentsCount()
+	
+	// Build styled content directly (don't calculate width on plain text with emojis)
+	borderStyle := lipgloss.NewStyle().Foreground(m.theme.SeparatorColor)
+	
+	var styledStatsContent string
+	if lostCount > 0 {
+		// Apply colors to each section
+		sessionsText := lipgloss.NewStyle().Foreground(m.theme.StatsColor).Bold(true).Render(fmt.Sprintf("🟢 Sessions: %d", m.stats.Sessions))
+		beaconsText := lipgloss.NewStyle().Foreground(m.theme.StatsColor).Bold(true).Render(fmt.Sprintf("🟡 Beacons: %d", m.stats.Beacons))
+		totalText := lipgloss.NewStyle().Foreground(m.theme.StatsColor).Bold(true).Render(fmt.Sprintf("🔵 Total: %d", m.stats.Compromised))
+		lostText := lipgloss.NewStyle().Foreground(lipgloss.Color("#ff9900")).Bold(true).Render(fmt.Sprintf("⚠️  Lost: %d (tracking %dm)", lostCount, int(tracking.GetLostAgentTimeout().Minutes())))
+		
+		styledStatsContent = fmt.Sprintf("%s  │  %s  │  %s  │  %s",
+			sessionsText, beaconsText, totalText, lostText)
+	} else {
+		sessionsText := lipgloss.NewStyle().Foreground(m.theme.StatsColor).Bold(true).Render(fmt.Sprintf("🟢 Sessions: %d", m.stats.Sessions))
+		beaconsText := lipgloss.NewStyle().Foreground(m.theme.StatsColor).Bold(true).Render(fmt.Sprintf("🟡 Beacons: %d", m.stats.Beacons))
+		totalText := lipgloss.NewStyle().Foreground(m.theme.StatsColor).Bold(true).Render(fmt.Sprintf("🔵 Total: %d", m.stats.Compromised))
+		
+		styledStatsContent = fmt.Sprintf("%s  │  %s  │  %s",
+			sessionsText, beaconsText, totalText)
+	}
+	
+	// Use lipgloss.Width to get actual rendered width (handles ANSI codes properly)
+	contentWidth := lipgloss.Width(styledStatsContent)
+	
+	// Calculate padding needed (separator width - borders - content)
+	// Format: │ content padding │
+	paddingNeeded := separatorWidth - contentWidth - 4 // -4 for "│ " and " │"
+	if paddingNeeded < 0 {
+		paddingNeeded = 0
+	}
+	
+	// Build final line with borders
+	statsLineFormatted := fmt.Sprintf("%s %s%s %s",
+		borderStyle.Render("│"),
+		styledStatsContent,
+		strings.Repeat(" ", paddingNeeded),
+		borderStyle.Render("│"))
+	
+	footerLines = append(footerLines, statsLineFormatted)
+	
+	// Bottom border with corner: └───────┘
+	bottomBorder := fmt.Sprintf("%s%s%s",
+		separatorStyle.Render("└"),
+		separatorStyle.Render(strings.Repeat("─", separatorWidth-2)),
+		separatorStyle.Render("┘"))
+	footerLines = append(footerLines, bottomBorder)
+	
+	// Line 2: Help shortcuts (more concise format)
+	helpText := "[r] Refresh  │  [t] Theme  │  [v] View  │  [d] Dashboard  │  [e] Expand  │  [#] Subnet  │  [↑↓] Scroll  │  [q] Quit"
+	helpStyle := lipgloss.NewStyle().
+		Foreground(m.theme.HelpColor).
+		Width(separatorWidth).
+		Align(lipgloss.Left).
+		Padding(0, 1)
+	footerLines = append(footerLines, helpStyle.Render(helpText))
+	
+	// Bottom spacing
+	footerLines = append(footerLines, "")
+	
+	// Show number buffer indicator if user is typing a subnet number (separate line)
 	if len(m.numberBuffer) > 0 {
 		bufferStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#f1fa8c")). // Yellow
@@ -874,11 +945,6 @@ func (m model) View() string {
 		footerLines = append(footerLines, bufferStyle.Render(bufferText))
 		footerLines = append(footerLines, "") // Add empty line for spacing
 	}
-	
-	helpStyle := lipgloss.NewStyle().Foreground(m.theme.HelpColor).Padding(0, 1)
-	helpText := "Press 'r' to refresh  │  't' to change theme  │  'v' to change view  │  'd' for dashboard  │  Type subnet # + Enter to expand  │  'e' expand all  │  '↑↓' or 'j/k' to scroll  │  'q' to quit"
-	footerLines = append(footerLines, helpStyle.Render(helpText))
-	footerLines = append(footerLines, "")
 	
 	// Combine header + content + footer for left side
 	leftContent := strings.Join(append(append(headerLines, contentLines...), footerLines...), "\n")
