@@ -18,6 +18,7 @@ type Agent struct {
 	ProxyURL      string    // Non-empty if pivoted through another agent
 	ParentID      string    // ID of parent agent (if pivoted)
 	Children      []Agent   // Child agents (pivoted through this one)
+	Domain        string    // DNS domain name (e.g., "m3c.local") - queried from agent
 
 	// Additional fields from protobuf
 	PID            int32  // Process ID

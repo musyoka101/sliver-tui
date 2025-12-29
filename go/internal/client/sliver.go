@@ -14,6 +14,7 @@ import (
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/commonpb"
 	"github.com/bishopfox/sliver/protobuf/rpcpb"
+	"github.com/bishopfox/sliver/protobuf/sliverpb"
 	"github.com/musyoka101/sliver-graphs/internal/models"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -181,7 +182,7 @@ func NewSliverClient(config *SliverConfig) *SliverClient {
 }
 
 // ConvertToAgents converts Sliver sessions and beacons to our models.Agent type
-func ConvertToAgents(sessions []*clientpb.Session, beacons []*clientpb.Beacon) ([]models.Agent, models.Stats) {
+func ConvertToAgents(sessions []*clientpb.Session, beacons []*clientpb.Beacon, client *SliverClient) ([]models.Agent, models.Stats) {
 	var agents []models.Agent
 	hostMap := make(map[string]bool)
 
@@ -208,6 +209,17 @@ func ConvertToAgents(sessions []*clientpb.Session, beacons []*clientpb.Beacon) (
 			Evasion:       s.Evasion,
 			Burned:        s.Burned,
 		}
+		
+		// Query DNS domain from session (only for active sessions)
+		if client != nil && !s.Burned {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			domain := client.queryDomainFromSession(ctx, s.ID)
+			cancel()
+			if domain != "" {
+				agent.Domain = domain
+			}
+		}
+		
 		agents = append(agents, agent)
 		hostMap[s.Hostname] = true
 	}
@@ -326,7 +338,52 @@ func FetchAgents(ctx context.Context) ([]models.Agent, models.Stats, error) {
 	}
 
 	// Convert to our models.Agent type
-	agents, stats := ConvertToAgents(sessions, beacons)
+	agents, stats := ConvertToAgents(sessions, beacons, client)
 
 	return agents, stats, nil
+}
+// queryDomainFromSession queries the DNS domain from a session agent
+// Returns the DNS domain (e.g., "m3c.local") or empty string if not found
+func (c *SliverClient) queryDomainFromSession(ctx context.Context, sessionID string) string {
+	// Add timeout to prevent hanging
+	queryCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	
+	// Add token to context if available
+	if c.config.Token != "" {
+		md := metadata.New(map[string]string{
+			"Authorization": "Bearer " + c.config.Token,
+		})
+		queryCtx = metadata.NewOutgoingContext(queryCtx, md)
+	}
+	
+	// Query USERDNSDOMAIN environment variable (Windows AD domain)
+	envReq := &sliverpb.EnvReq{
+		Name: "USERDNSDOMAIN",
+		Request: &commonpb.Request{
+			SessionID: sessionID,
+		},
+	}
+	
+	envInfo, err := c.rpc.GetEnv(queryCtx, envReq)
+	if err != nil {
+		// Silently fail - this is expected for non-domain-joined machines
+		return ""
+	}
+	
+	if envInfo == nil || len(envInfo.Variables) == 0 {
+		return ""
+	}
+	
+	// Find the USERDNSDOMAIN variable
+	for _, envVar := range envInfo.Variables {
+		if strings.EqualFold(envVar.Key, "USERDNSDOMAIN") {
+			domain := strings.TrimSpace(envVar.Value)
+			if domain != "" && domain != "%USERDNSDOMAIN%" {
+				return strings.ToLower(domain)
+			}
+		}
+	}
+	
+	return ""
 }

@@ -120,6 +120,7 @@ type model struct {
 	alertManager    *alerts.AlertManager // Alert/notification system
 	previousAgents  map[string]Agent // Track previous agent state for change detection
 	animationFrame  int              // Frame counter for animations (arrows, etc.)
+	dnsCache        map[string]string // Cache for DNS lookups (IP -> domain)
 	
 	// Performance optimization: content caching
 	cachedContent   string // Last rendered content
@@ -1047,9 +1048,51 @@ func (m model) renderTacticalPanel() string {
 			}
 		}
 
-		// Extract domain
-		if strings.Contains(agent.Username, "\\") {
-			domain := strings.Split(agent.Username, "\\")[0]
+		// Extract domain using multiple methods (priority order)
+		var domain string
+		
+		// Method 1 (HIGHEST PRIORITY): Use domain queried directly from agent
+		// This is populated by querying USERDNSDOMAIN environment variable from sessions
+		if agent.Domain != "" {
+			domain = agent.Domain
+		}
+		
+		// Method 2: Extract from hostname if it contains FQDN (e.g., "m3sqlw.m3c.local")
+		if domain == "" {
+			domain = config.ExtractDomainFromHostname(agent.Hostname)
+		}
+		
+		// Method 3: Perform reverse DNS lookup on IP address to get FQDN (with caching)
+		if domain == "" && agent.RemoteAddress != "" {
+			// Check cache first
+			if cachedDomain, exists := m.dnsCache[agent.RemoteAddress]; exists {
+				domain = cachedDomain
+			} else {
+				// Perform DNS lookup (this may be slow, so we cache it)
+				resolvedDomain := config.ResolveDomainFromIP(agent.RemoteAddress)
+				m.dnsCache[agent.RemoteAddress] = resolvedDomain // Cache result (even if empty)
+				domain = resolvedDomain
+			}
+		}
+		
+		// Method 4: Fallback to NetBIOS domain from username (Windows: DOMAIN\username)
+		// Only use this as last resort if all DNS methods failed
+		if domain == "" && strings.Contains(agent.Username, "\\") {
+			netbiosDomain := strings.Split(agent.Username, "\\")[0]
+			
+			// Filter out system accounts that aren't real domains
+			domainUpper := strings.ToUpper(netbiosDomain)
+			if domainUpper != "NT AUTHORITY" && 
+			   domainUpper != "BUILTIN" && 
+			   domainUpper != "WORKGROUP" &&
+			   netbiosDomain != "" {
+				// Use NetBIOS name as fallback (not ideal but better than nothing)
+				domain = netbiosDomain
+			}
+		}
+		
+		// Only add valid domains
+		if domain != "" {
 			domains[domain]++
 		}
 
@@ -3369,6 +3412,7 @@ func main() {
 		expandedSubnets: make(map[string]bool), // Initialize expanded subnets map
 		alertManager:    alerts.NewAlertManager(5), // Max 5 visible alerts
 		previousAgents:  make(map[string]Agent), // Initialize agent tracking map
+		dnsCache:        make(map[string]string), // Initialize DNS cache
 	}
 
 	// Create and run program with alt screen
