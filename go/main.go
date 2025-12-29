@@ -1120,8 +1120,9 @@ func (m model) renderTacticalPanel() string {
 			}
 		}
 		
-		// Only add valid domains
+		// Normalize domain to lowercase for consistent counting
 		if domain != "" {
+			domain = strings.ToLower(domain)
 			domains[domain]++
 		}
 
@@ -1172,7 +1173,35 @@ func (m model) renderTacticalPanel() string {
 	lines = append(lines, "")
 	lines = append(lines, sectionStyle.Render("🏢 Domains Discovered"))
 	if len(domains) > 0 {
+		// Deduplicate: Remove NetBIOS names if FQDN exists
+		// e.g., if both "m3c" and "m3c.local" exist, only show "m3c.local"
+		deduplicatedDomains := make(map[string]int)
+		
 		for domain, count := range domains {
+			// Check if this is a potential NetBIOS name (no dots)
+			if !strings.Contains(domain, ".") {
+				// Look for a matching FQDN that starts with this NetBIOS name
+				foundFQDN := false
+				for otherDomain := range domains {
+					if strings.Contains(otherDomain, ".") && 
+					   strings.HasPrefix(strings.ToLower(otherDomain), strings.ToLower(domain)+".") {
+						// Found matching FQDN, merge counts into the FQDN
+						deduplicatedDomains[otherDomain] += count
+						foundFQDN = true
+						break
+					}
+				}
+				// If no FQDN found, keep the NetBIOS name
+				if !foundFQDN {
+					deduplicatedDomains[domain] += count
+				}
+			} else {
+				// This is an FQDN, always keep it
+				deduplicatedDomains[domain] += count
+			}
+		}
+		
+		for domain, count := range deduplicatedDomains {
 			lines = append(lines, fmt.Sprintf("  %s %s",
 				valueStyle.Render(domain),
 				mutedStyle.Render(fmt.Sprintf("(%d users)", count))))
