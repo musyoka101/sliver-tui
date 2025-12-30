@@ -3491,8 +3491,8 @@ func main() {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	
-	// Initialize with default theme (index 0)
-	defaultTheme := config.GetTheme(0)
+	// Initialize with default theme (index 3 = Matrix theme)
+	defaultTheme := config.GetTheme(3)
 	s.Style = lipgloss.NewStyle().Foreground(defaultTheme.TitleColor)
 	
 	// Initialize with default view (index 0)
@@ -3505,7 +3505,7 @@ func main() {
 		loading:         true,
 		termWidth:       180, // Default fallback width
 		termHeight:      40,  // Default fallback height
-		themeIndex:      0,   // Start with default theme
+		themeIndex:      3,   // Start with Matrix theme
 		theme:           defaultTheme,
 		viewIndex:       0,   // Start with default view
 		view:            defaultView,
