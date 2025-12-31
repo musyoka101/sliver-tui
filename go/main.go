@@ -164,7 +164,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Dashboard keybind
 		case "d":
 			// Toggle to dashboard view directly
-			m.viewIndex = 2 // Dashboard is index 2
+			m.viewIndex = 3 // Dashboard is index 3
 			m.view = config.GetView(m.viewIndex)
 			m.contentDirty = true
 			if m.ready {
@@ -211,7 +211,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		
 		// Dashboard page navigation (when in dashboard view)
 		case "tab":
-			if m.viewIndex == 2 { // Dashboard view only
+			if m.viewIndex == 3 { // Dashboard view only
 				m.dashboardPage = (m.dashboardPage + 1) % 5 // 5 pages: 0-4
 				m.contentDirty = true
 				if m.ready {
@@ -221,7 +221,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		
 		case "shift+tab":
-			if m.viewIndex == 2 { // Dashboard view only
+			if m.viewIndex == 3 { // Dashboard view only
 				m.dashboardPage = (m.dashboardPage - 1 + 5) % 5 // 5 pages: 0-4
 				m.contentDirty = true
 				if m.ready {
@@ -231,7 +231,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		
 		case "f1":
-			if m.viewIndex == 2 {
+			if m.viewIndex == 3 {
 				m.dashboardPage = 0
 				m.contentDirty = true
 				if m.ready {
@@ -241,7 +241,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		
 		case "f2":
-			if m.viewIndex == 2 {
+			if m.viewIndex == 3 {
 				m.dashboardPage = 1
 				m.contentDirty = true
 				if m.ready {
@@ -251,7 +251,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		
 		case "f3":
-			if m.viewIndex == 2 {
+			if m.viewIndex == 3 {
 				m.dashboardPage = 2
 				m.contentDirty = true
 				if m.ready {
@@ -261,7 +261,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		
 		case "f4":
-			if m.viewIndex == 2 {
+			if m.viewIndex == 3 {
 				m.dashboardPage = 3
 				m.contentDirty = true
 				if m.ready {
@@ -271,7 +271,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		
 		case "f5":
-			if m.viewIndex == 2 {
+			if m.viewIndex == 3 {
 				m.dashboardPage = 4
 				m.contentDirty = true
 				if m.ready {
@@ -321,7 +321,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		
 		// Multi-digit subnet number input (accumulate digits in buffer)
 		case "0", "1", "2", "3", "4", "5", "6", "7", "8", "9":
-			if m.viewIndex == 2 { // Dashboard view only
+			if m.viewIndex == 3 { // Dashboard view only
 				// Append digit to buffer
 				m.numberBuffer += msg.String()
 				// Update viewport to show the buffer indicator
@@ -333,7 +333,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		
 		// Enter key - activate subnet selection from buffer
 		case "enter":
-			if m.viewIndex == 2 && len(m.numberBuffer) > 0 {
+			if m.viewIndex == 3 && len(m.numberBuffer) > 0 {
 				// Convert buffer to integer
 				subnetNum := 0
 				for _, ch := range m.numberBuffer {
@@ -388,7 +388,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Handle mouse clicks for interactive elements
 		if msg.Type == tea.MouseLeft {
 			// Check if in dashboard view
-			if m.viewIndex == 2 {
+			if m.viewIndex == 3 {
 				// TODO: Implement click detection for subnet expansion
 				// For now, we'll add a simple toggle mechanism with 'e' key
 			}
@@ -829,7 +829,7 @@ func (m model) View() string {
 		// Initial render before viewport ready
 		agentLines := m.renderAgents()
 		logo := []string{
-			"    🔥🔥     ",
+			"  🔥🔥  ",
 			"  ▄▄▄▄▄▄▄   ",
 			"  █ C2  █   ",
 			"  █▓▓▓▓▓█   ",
