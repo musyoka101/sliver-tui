@@ -96,6 +96,14 @@ type SparklineCache struct {
 	lastUpdate          time.Time
 }
 
+// IconStyle represents the icon rendering style
+type IconStyle int
+
+const (
+	IconStyleNerdFont IconStyle = iota // Nerd Font icons (Windows/Linux/Mac glyphs)
+	IconStyleEmoji                     // Classic emoji icons (💻🐧🖥️)
+)
+
 // Model represents the application state
 type model struct {
 	agents          []Agent
@@ -122,6 +130,7 @@ type model struct {
 	animationFrame  int              // Frame counter for animations (arrows, etc.)
 	dnsCache        map[string]string // Cache for DNS lookups (IP -> domain)
 	domainCache     map[string]string // Cache for agent domains (sessionID -> domain)
+	iconStyle       IconStyle        // Current icon style (Nerd Font or Emoji)
 	
 	// Performance optimization: content caching
 	cachedContent   string // Last rendered content
@@ -169,6 +178,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.theme = config.GetTheme(m.themeIndex)
 			m.contentDirty = true
 			// Update viewport content with new theme
+			if m.ready {
+				m.updateViewportContent()
+			}
+			return m, nil
+		
+		// Icon style toggle
+		case "i":
+			// Toggle between Nerd Font and Emoji icons
+			if m.iconStyle == IconStyleNerdFont {
+				m.iconStyle = IconStyleEmoji
+			} else {
+				m.iconStyle = IconStyleNerdFont
+			}
+			m.contentDirty = true
+			// Update viewport content with new icon style
 			if m.ready {
 				m.updateViewportContent()
 			}
@@ -785,7 +809,11 @@ func (m model) View() string {
 	if m.termWidth > 0 && m.termHeight > 0 {
 		statusText += fmt.Sprintf("  │  Term: %dx%d", m.termWidth, m.termHeight)
 	}
-	statusText += fmt.Sprintf("  │  Theme: %s  │  View: %s", m.theme.Name, m.view.Name)
+	iconStyleName := "Nerd Font"
+	if m.iconStyle == IconStyleEmoji {
+		iconStyleName = "Emoji"
+	}
+	statusText += fmt.Sprintf("  │  Theme: %s  │  View: %s  │  Icons: %s", m.theme.Name, m.view.Name, iconStyleName)
 	headerLines = append(headerLines, statusStyle.Render(statusText))
 	headerLines = append(headerLines, "")
 	
@@ -927,7 +955,7 @@ func (m model) View() string {
 	footerLines = append(footerLines, bottomBorder)
 	
 	// Line 2: Help shortcuts (more concise format)
-	helpText := "[r] Refresh  │  [t] Theme  │  [v] View  │  [d] Dashboard  │  [e] Expand  │  [#] Subnet  │  [↑↓] Scroll  │  [q] Quit"
+	helpText := "[r] Refresh  │  [t] Theme  │  [i] Icons  │  [v] View  │  [d] Dashboard  │  [e] Expand  │  [#] Subnet  │  [↑↓] Scroll  │  [q] Quit"
 	helpStyle := lipgloss.NewStyle().
 		Foreground(m.theme.HelpColor).
 		Width(separatorWidth).
@@ -1645,7 +1673,7 @@ func (m model) renderSubnetBox(group *SubnetGroup) string {
 		}
 		
 		// Use new icon helpers
-		icon := getAgentTypeIcon(agent)
+		icon := m.getAgentTypeIcon(agent)
 		color := m.theme.BeaconColor
 		if agent.IsDead {
 			color = m.theme.DeadColor
@@ -1654,8 +1682,8 @@ func (m model) renderSubnetBox(group *SubnetGroup) string {
 		}
 		
 		// Get OS and host type icons
-		osIcon := getOSIcon(agent.OS)
-		hostTypeIcon := getHostTypeIcon(agent)
+		osIcon := m.getOSIcon(agent.OS)
+		hostTypeIcon := m.getHostTypeIcon(agent)
 		
 		privilege := ""
 		if agent.IsPrivileged {
@@ -3063,7 +3091,7 @@ func (m model) renderAgentBox(agent Agent) []string {
 	var lines []string
 
 	// Status icon using new helper
-	statusIcon := getAgentTypeIcon(agent)
+	statusIcon := m.getAgentTypeIcon(agent)
 	var statusColor lipgloss.Color
 
 	if agent.IsDead {
@@ -3075,8 +3103,8 @@ func (m model) renderAgentBox(agent Agent) []string {
 	}
 
 	// OS icon using new helper functions
-	osIcon := getOSIcon(agent.OS)
-	hostTypeIcon := getHostTypeIcon(agent)
+	osIcon := m.getOSIcon(agent.OS)
+	hostTypeIcon := m.getHostTypeIcon(agent)
 
 	// Username color (dead overrides all)
 	var usernameColor lipgloss.Color
@@ -3232,10 +3260,29 @@ func (m model) renderAgentTreeWithViewAndContext(agent Agent, depth int, viewTyp
 	return lines
 }
 
-// getOSIcon returns the appropriate OS icon based on the OS string
-func getOSIcon(os string) string {
+// getOSIcon returns the appropriate OS icon based on the OS string and icon style
+func (m model) getOSIcon(os string) string {
 	osLower := strings.ToLower(os)
 	
+	if m.iconStyle == IconStyleEmoji {
+		// Classic emoji style
+		if strings.Contains(osLower, "windows") {
+			return "🖥️"  // Desktop computer for Windows
+		} else if strings.Contains(osLower, "linux") || strings.Contains(osLower, "ubuntu") || 
+		          strings.Contains(osLower, "debian") || strings.Contains(osLower, "centos") ||
+		          strings.Contains(osLower, "rhel") || strings.Contains(osLower, "fedora") ||
+		          strings.Contains(osLower, "arch") || strings.Contains(osLower, "kali") {
+			return "🐧"  // Penguin for Linux
+		} else if strings.Contains(osLower, "darwin") || strings.Contains(osLower, "macos") || 
+		          strings.Contains(osLower, "mac os") {
+			return "🍎"  // Apple for macOS
+		} else if strings.Contains(osLower, "android") {
+			return "📱"  // Phone for Android
+		}
+		return "💻"  // Default laptop
+	}
+	
+	// Nerd Font style
 	if strings.Contains(osLower, "windows") {
 		return ""  // Windows icon
 	} else if strings.Contains(osLower, "linux") || strings.Contains(osLower, "ubuntu") || 
@@ -3254,45 +3301,72 @@ func getOSIcon(os string) string {
 }
 
 // getHostTypeIcon returns server or computer icon based on OS and hostname heuristics
-func getHostTypeIcon(agent Agent) string {
+func (m model) getHostTypeIcon(agent Agent) string {
 	// Check OS for "Server" keyword (most reliable)
 	osLower := strings.ToLower(agent.OS)
-	if strings.Contains(osLower, "server") {
+	isServer := strings.Contains(osLower, "server")
+	
+	if !isServer {
+		// Check hostname patterns for common server naming conventions
+		hostnameUpper := strings.ToUpper(agent.Hostname)
+		
+		// Server prefixes
+		serverPrefixes := []string{"DC", "WEB", "SQL", "DB", "SRV", "FILE", "EXCH", "AD", "DNS", "DHCP", "FTP", "MAIL"}
+		for _, prefix := range serverPrefixes {
+			if strings.HasPrefix(hostnameUpper, prefix) {
+				isServer = true
+				break
+			}
+		}
+		
+		// Workstation patterns (explicit workstation indicators)
+		if !isServer {
+			workstationPrefixes := []string{"DESKTOP-", "LAPTOP-", "PC-", "WKS-", "WORK-"}
+			for _, prefix := range workstationPrefixes {
+				if strings.HasPrefix(hostnameUpper, prefix) {
+					isServer = false
+					break
+				}
+			}
+		}
+	}
+	
+	if m.iconStyle == IconStyleEmoji {
+		// Classic emoji style - differentiate session vs beacon for servers
+		if isServer {
+			return "🖥️"  // Desktop/server
+		} else if agent.IsSession {
+			return "💻"  // Laptop for active sessions
+		}
+		return "💻"  // Default laptop
+	}
+	
+	// Nerd Font style
+	if isServer {
 		return "󰒋"  // Server icon
 	}
-	
-	// Check hostname patterns for common server naming conventions
-	hostnameUpper := strings.ToUpper(agent.Hostname)
-	
-	// Server prefixes
-	serverPrefixes := []string{"DC", "WEB", "SQL", "DB", "SRV", "FILE", "EXCH", "AD", "DNS", "DHCP", "FTP", "MAIL"}
-	for _, prefix := range serverPrefixes {
-		if strings.HasPrefix(hostnameUpper, prefix) {
-			return "󰒋"  // Server icon
-		}
-	}
-	
-	// Workstation patterns (explicit workstation indicators)
-	workstationPrefixes := []string{"DESKTOP-", "LAPTOP-", "PC-", "WKS-", "WORK-"}
-	for _, prefix := range workstationPrefixes {
-		if strings.HasPrefix(hostnameUpper, prefix) {
-			return "󰟀"  // Computer icon
-		}
-	}
-	
-	// Default to computer/workstation (most common in pentests)
-	return "󰟀"
+	return "󰟀"  // Computer icon
 }
 
 // getAgentTypeIcon returns the icon for agent type (session/beacon/dead)
-func getAgentTypeIcon(agent Agent) string {
+func (m model) getAgentTypeIcon(agent Agent) string {
+	if m.iconStyle == IconStyleEmoji {
+		// Classic emoji style
+		if agent.IsDead {
+			return "💀"  // Skull for dead
+		} else if agent.IsSession {
+			return "◆"  // Diamond for session
+		}
+		return "◇"  // Hollow diamond for beacon
+	}
+	
+	// Nerd Font style
 	if agent.IsDead {
 		return ""  // X icon for dead
 	} else if agent.IsSession {
 		return "󰚥"  // Lightning icon for active session
-	} else {
-		return ""  // Dot-circle icon for beacon
 	}
+	return ""  // Dot-circle icon for beacon
 }
 
 // renderTableView renders agents in a professional table format
@@ -3388,7 +3462,7 @@ func (m model) renderTableView() string {
 		}
 		
 		// Build type string with icon
-		typeIcon := getAgentTypeIcon(agent)
+		typeIcon := m.getAgentTypeIcon(agent)
 		typeStr := "beacon"
 		if agent.IsSession {
 			typeStr = "session"
@@ -3404,8 +3478,8 @@ func (m model) renderTableView() string {
 		}
 		
 		// OS with architecture and icons
-		osIcon := getOSIcon(agent.OS)
-		hostTypeIcon := getHostTypeIcon(agent)
+		osIcon := m.getOSIcon(agent.OS)
+		hostTypeIcon := m.getHostTypeIcon(agent)
 		osStr := agent.OS
 		if agent.Arch != "" {
 			osStr = fmt.Sprintf("%s %s", agent.OS, agent.Arch)
@@ -3495,7 +3569,7 @@ func (m model) renderAgentLine(agent Agent) []string {
 	var lines []string
 	
 	// Status icon using new helper
-	statusIcon := getAgentTypeIcon(agent)
+	statusIcon := m.getAgentTypeIcon(agent)
 	var statusColor lipgloss.Color
 	
 	if agent.IsDead {
@@ -3507,8 +3581,8 @@ func (m model) renderAgentLine(agent Agent) []string {
 	}
 
 	// OS icon and host type using new helper functions
-	osIcon := getOSIcon(agent.OS)
-	hostTypeIcon := getHostTypeIcon(agent)
+	osIcon := m.getOSIcon(agent.OS)
+	hostTypeIcon := m.getHostTypeIcon(agent)
 
 	// Username color (dead overrides all)
 	var usernameColor lipgloss.Color
