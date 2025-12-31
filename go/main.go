@@ -955,7 +955,7 @@ func (m model) View() string {
 	footerLines = append(footerLines, bottomBorder)
 	
 	// Line 2: Help shortcuts (more concise format)
-	helpText := "[r] Refresh  │  [t] Theme  │  [i] Icons  │  [v] View  │  [d] Dashboard  │  [e] Expand  │  [#] Subnet  │  [↑↓] Scroll  │  [q] Quit"
+	helpText := "[r] Refresh  [t] Theme  [i] Icons  [v] View  [d] Dashboard  [e] Expand  [#] Subnet  [↑↓] Scroll  [q] Quit"
 	helpStyle := lipgloss.NewStyle().
 		Foreground(m.theme.HelpColor).
 		Width(separatorWidth).
@@ -3245,10 +3245,10 @@ func (m model) renderAgentTreeWithViewAndContext(agent Agent, depth int, viewTyp
 		lines = append(lines, agentLines...)
 	}
 
-	// Add spacing between agents at root level (only for Tree view)
-	if depth == 0 && len(agent.Children) == 0 && viewType == config.ViewTypeTree {
-		lines = append(lines, "")
-	}
+	// Don't add extra spacing between agents - keep them compact
+	// if depth == 0 && len(agent.Children) == 0 && viewType == config.ViewTypeTree {
+	// 	lines = append(lines, "")
+	// }
 
 	// Recursively render children
 	for i, child := range agent.Children {
@@ -3332,16 +3332,11 @@ func (m model) getHostTypeIcon(agent Agent) string {
 	}
 	
 	if m.iconStyle == IconStyleEmoji {
-		// Classic emoji style - differentiate session vs beacon for servers
-		if isServer {
-			return "🖥️"  // Desktop/server
-		} else if agent.IsSession {
-			return "💻"  // Laptop for active sessions
-		}
-		return "💻"  // Default laptop
+		// Classic emoji style - OS icon already shows the type, so no separate host type icon needed
+		return ""  // Return empty string in emoji mode to avoid duplication
 	}
 	
-	// Nerd Font style
+	// Nerd Font style - show separate server/computer icon
 	if isServer {
 		return "󰒋"  // Server icon
 	}
@@ -3656,7 +3651,7 @@ func (m model) renderAgentLine(agent Agent) []string {
 	
 	protocolBox := protocolBoxStyle.Render(strings.ToUpper(agent.Transport))
 	
-	line1 := fmt.Sprintf("%s%s%s%s %s %s %s %s%s%s",
+	line1 := fmt.Sprintf("%s%s%s%s %s %s %s  %s%s%s",
 		connectorStyle.Render("╰────────"),
 		protocolBox,
 		connectorStyle.Render("────────"),
