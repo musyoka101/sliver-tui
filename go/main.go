@@ -890,8 +890,9 @@ func (m model) View() string {
 	if separatorWidth < 80 {
 		separatorWidth = 80
 	}
-	if m.view.Type != config.ViewTypeTable && separatorWidth > 120 {
-		separatorWidth = 120 // Only limit max width for non-table views
+	// Apply max width limit to all views for consistent appearance
+	if separatorWidth > 120 {
+		separatorWidth = 120
 	}
 	
 	separatorStyle := lipgloss.NewStyle().Foreground(m.theme.SeparatorColor)
