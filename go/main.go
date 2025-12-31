@@ -399,11 +399,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.Type {
 		case tea.MouseLeft:
 			// Left click - select agent or interact with UI element
-			// Calculate the line number in viewport content
 			clickY := msg.Y - m.viewport.YPosition
 			actualLine := m.viewport.YOffset + clickY
 			
-			// Check if clicked on an agent line
+			// Check if clicked on an agent line (agents use viewport content coordinates)
 			if agentID, exists := m.agentLineMap[actualLine]; exists {
 				if m.selectedAgentID == agentID {
 					// Deselect if clicking same agent
@@ -419,16 +418,46 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			
-			// Check if clicked on an alert line (click-to-jump to agent)
-			if agentID, exists := m.alertLineMap[actualLine]; exists {
-				// Jump to and select the agent associated with this alert
-				m.selectedAgentID = agentID
-				m.contentDirty = true
-				if m.ready {
-					m.updateViewportContent()
+			// Check if clicked on alert panel (alerts are at bottom of screen)
+			// Calculate if click is in alert area and which alert was clicked
+			if m.alertManager != nil {
+				activeAlerts := m.alertManager.GetAlerts()
+				if len(activeAlerts) > 0 {
+					// Alert panel height = 1 (top border) + num alerts + 1 (bottom border)
+					alertPanelHeight := len(activeAlerts) + 2
+					
+					// Alerts are rendered near the bottom of the screen
+					// They appear after footer text (stats, help, etc)
+					// Calculate from terminal height
+					estimatedAlertStartY := m.termHeight - alertPanelHeight - 1
+					
+					// Check if click is in alert area
+					if msg.Y >= estimatedAlertStartY && msg.Y < estimatedAlertStartY + alertPanelHeight {
+						// Calculate which alert was clicked
+						// Top border is at estimatedAlertStartY
+						// First alert is at estimatedAlertStartY + 1
+						// So alertIndex = clickY - (estimatedAlertStartY + 1)
+						alertIndex := msg.Y - estimatedAlertStartY - 1
+						
+						// Adjust for the 2-line offset (seems to be off by 2)
+						alertIndex = alertIndex + 2
+						
+						if alertIndex >= 0 && alertIndex < len(activeAlerts) {
+							alert := activeAlerts[alertIndex]
+							if alert.AgentID != "" {
+								// Jump to and select the agent
+								m.selectedAgentID = alert.AgentID
+								m.contentDirty = true
+								if m.ready {
+									m.updateViewportContent()
+								}
+								return m, nil
+							}
+						}
+					}
 				}
-				return m, nil
 			}
+			
 			return m, nil
 			
 		case tea.MouseWheelUp:
@@ -1117,9 +1146,6 @@ func (m model) View() string {
 	// Check if there's enough space to show alerts without overlapping with right panel
 	alertPanel := m.renderAlertPanel()
 	if alertPanel != "" {
-		// Reset alert line map before rebuilding
-		m.alertLineMap = make(map[int]string)
-		
 		// Calculate if alerts would overlap with agent details/tactical panel
 		showAlerts := true
 		
@@ -1167,15 +1193,13 @@ func (m model) View() string {
 				alertStartLine = 0
 			}
 			
-			// Build alert line map for mouse clicking
-			// Get active alerts and map their lines
+			// Build alert line map for mouse clicking (NOTE: View() is by-value so map changes don't persist)
+			// This map is built for reference but direct calculation in Update() is used instead
 			if m.alertManager != nil {
 				activeAlerts := m.alertManager.GetAlerts()
-				// First line is border (index 0), alerts start at index 1
 				alertContentStartLine := alertStartLine + 1
 				for i, alert := range activeAlerts {
 					if alert.AgentID != "" {
-						// Map this alert's line to its agent ID
 						m.alertLineMap[alertContentStartLine+i] = alert.AgentID
 					}
 				}
