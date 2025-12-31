@@ -1497,11 +1497,10 @@ func (m *model) buildHelpContent() string {
 	// Build styled help content with proper colors
 	var helpLines []string
 	
-	// Header
+	// Header - simple title without box border (outer border handles this)
+	titleStyle := lipgloss.NewStyle().Foreground(titleColor).Bold(true).Align(lipgloss.Center).Width(80)
 	helpLines = append(helpLines, 
-		lipgloss.NewStyle().Foreground(titleColor).Bold(true).Render("╔════════════════════════════════════════════════════════════════════════════════╗"),
-		lipgloss.NewStyle().Foreground(titleColor).Bold(true).Render("║                    🎯 SLIVER C2 TUI - HELP MENU                               ║"),
-		lipgloss.NewStyle().Foreground(titleColor).Bold(true).Render("╚════════════════════════════════════════════════════════════════════════════════╝"),
+		titleStyle.Render("🎯 SLIVER C2 TUI - HELP MENU"),
 		"",
 	)
 	
