@@ -142,6 +142,9 @@ type model struct {
 	agentLineMap    map[int]string    // Map viewport line number to agent ID
 	alertLineMap    map[int]string    // Map viewport line number to agent ID (from alerts)
 	mouseEnabled    bool              // Track if mouse is enabled
+	
+	// Help menu
+	showHelp        bool              // Flag to show/hide help menu
 }
 
 func (m model) Init() tea.Cmd {
@@ -163,6 +166,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
+		case "?":
+			// Toggle help menu
+			m.showHelp = !m.showHelp
+			return m, nil
 		case "r":
 			m.loading = true
 			return m, fetchAgentsCmd
@@ -861,6 +868,11 @@ func (m model) renderAlertPanel() string {
 }
 
 func (m model) View() string {
+	// Show help menu immediately if active (skip all other rendering)
+	if m.showHelp {
+		return m.renderHelpMenu()
+	}
+	
 	// Build header (title + status) - this is FIXED at top, not scrollable
 	var headerLines []string
 	titleStyle := lipgloss.NewStyle().
@@ -1393,6 +1405,90 @@ func (m model) renderAgentDetailsPanel() string {
 		Render("Press ESC to deselect"))
 	
 	return panelStyle.Render(strings.Join(lines, "\n"))
+}
+
+// renderHelpMenu renders a comprehensive help overlay
+func (m model) renderHelpMenu() string {
+	titleColor := m.theme.TitleColor
+	descColor := m.theme.TacticalValue
+	
+	help := `
+╔════════════════════════════════════════════════════════════════════════════════╗
+║                    🎯 SLIVER C2 TUI - HELP MENU                               ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+GENERAL CONTROLS
+  ?             Toggle this help menu
+  q, Ctrl+C     Quit application
+  r             Refresh agents from Sliver server
+  ESC           Deselect agent / Clear number buffer
+
+VIEW CONTROLS
+  v             Cycle through views (Tree → Box → Table → Dashboard → Network Map)
+  d             Jump directly to Dashboard view
+  t             Cycle through color themes
+  i             Toggle icon style (Nerd Font ↔ Emoji)
+
+DASHBOARD NAVIGATION (Dashboard View Only)
+  Tab           Next dashboard page
+  Shift+Tab     Previous dashboard page
+  F1            Jump to OVERVIEW page
+  F2            Jump to NETWORK INTEL page
+  F3            Jump to OPERATIONS page
+  F4            Jump to SECURITY page
+  F5            Jump to ANALYTICS page
+
+NETWORK TOPOLOGY (Dashboard & Network Map)
+  e             Expand/collapse all subnets
+  0-9           Enter subnet number (multi-digit supported)
+  Enter         Toggle selected subnet expand/collapse
+
+SCROLLING
+  ↑/k           Scroll up
+  ↓/j           Scroll down
+  PgUp/u        Page up
+  PgDn/d        Page down
+  Home/g        Go to top
+  End/G         Go to bottom
+
+MOUSE CONTROLS
+  Left Click    Select/deselect agent (shows details panel)
+  Click Alert   Jump to agent associated with alert
+  Scroll Wheel  Scroll content up/down
+
+AGENT STATUS INDICATORS
+  🟢 Green      Active session (interactive)
+  🔵 Blue       Active beacon (check-in based)
+  🔴 Red        Dead agent (missed check-ins)
+  💎 Diamond    Privileged access (SYSTEM/root)
+  ✨ Sparkle    Recently connected (new agent)
+
+ALERT PANEL
+  🔴 Critical   Session lost, beacon disconnected
+  🟡 Warning    Beacon missed check-in
+  🟢 Success    New connection, privilege escalation
+  🔵 Info       State changes, task updates
+  • Click any alert to jump to that agent
+  • Alerts auto-expire after 30 seconds
+
+VIEW TYPES
+  Tree View     Hierarchical tree layout with C2 logo
+  Box View      Boxed layout with borders
+  Table View    Spreadsheet-style table
+  Dashboard     Analytics with 5 pages of tactical intelligence
+  Network Map   Visual network topology with subnet grouping
+
+Press ? to close • github.com/musyoka101/sliver-graphs
+`
+	
+	styled := lipgloss.NewStyle().
+		Foreground(descColor).
+		Padding(1, 2).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(titleColor).
+		Render(help)
+	
+	return styled
 }
 
 func (m model) renderTacticalPanel() string {
