@@ -1657,29 +1657,69 @@ func (m model) renderSubnetBox(group *SubnetGroup) string {
 		}
 	}
 	
-	// Show agents based on expansion state
+	// Show agents based on expansion state (deduplicate by hostname)
+	// Group agents by hostname to avoid showing duplicate hosts
+	hostMap := make(map[string][]Agent)
+	for _, agent := range group.Agents {
+		hostMap[agent.Hostname] = append(hostMap[agent.Hostname], agent)
+	}
+	
+	// Get sorted list of unique hostnames
+	var hostnames []string
+	for hostname := range hostMap {
+		hostnames = append(hostnames, hostname)
+	}
+	sort.Strings(hostnames)
+	
 	maxShow := 4
 	if isExpanded {
-		maxShow = len(group.Agents) // Show all when expanded
+		maxShow = len(hostnames) // Show all when expanded
 		if maxShow > 15 {
 			maxShow = 15 // Reasonable limit
 		}
 	}
 	
-	for i, agent := range group.Agents {
+	for i, hostname := range hostnames {
 		if i >= maxShow {
-			remaining := len(group.Agents) - maxShow
+			remaining := len(hostnames) - maxShow
 			lines = append(lines, mutedStyle.Render(fmt.Sprintf("  ... +%d more", remaining)))
 			break
 		}
 		
-		// Use new icon helpers
-		icon := m.getAgentTypeIcon(agent)
+		// Get all agents for this hostname
+		hostsAgents := hostMap[hostname]
+		
+		// Use the first agent for OS/host type icons
+		agent := hostsAgents[0]
+		
+		// Determine display properties based on all agents on this host
+		hasSession := false
+		hasDead := false
+		hasPrivileged := false
+		
+		for _, a := range hostsAgents {
+			if a.IsDead {
+				hasDead = true
+			} else if a.IsSession {
+				hasSession = true
+			}
+			if a.IsPrivileged {
+				hasPrivileged = true
+			}
+		}
+		
+		// Choose icon and color based on priority: dead > session > beacon
+		icon := ""
 		color := m.theme.BeaconColor
-		if agent.IsDead {
+		if hasDead {
+			icon = m.getAgentTypeIcon(Agent{IsDead: true})
 			color = m.theme.DeadColor
-		} else if agent.IsSession {
+		} else if hasSession {
+			icon = m.getAgentTypeIcon(Agent{IsSession: true})
 			color = m.theme.SessionColor
+		} else {
+			icon = m.getAgentTypeIcon(Agent{IsSession: false})
+			color = m.theme.BeaconColor
 		}
 		
 		// Get OS and host type icons
@@ -1687,22 +1727,22 @@ func (m model) renderSubnetBox(group *SubnetGroup) string {
 		hostTypeIcon := m.getHostTypeIcon(agent)
 		
 		privilege := ""
-		if agent.IsPrivileged {
+		if hasPrivileged {
 			privilege = " 💎"
 		}
 		
 		agentStyle := lipgloss.NewStyle().Foreground(color)
 		
-		hostname := agent.Hostname
-		if len(hostname) > 10 {
-			hostname = hostname[:10]
+		displayHostname := hostname
+		if len(displayHostname) > 10 {
+			displayHostname = displayHostname[:10]
 		}
 		
 		lines = append(lines, fmt.Sprintf("%s %s %s %s%s", 
 			agentStyle.Render(icon),
 			osIcon,
 			hostTypeIcon,
-			hostname,
+			displayHostname,
 			privilege))
 	}
 	
