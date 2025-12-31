@@ -471,7 +471,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.animationFrame > 3 {
 			m.animationFrame = 0
 		}
-		// Only mark dirty and update if we're on Network Map, Box, or Tree view
+		// Only mark dirty and update if we're on views with animations
 		if m.view.Type == config.ViewTypeNetworkMap || m.view.Type == config.ViewTypeBox || m.view.Type == config.ViewTypeTree {
 			m.contentDirty = true
 			if m.ready {
@@ -853,14 +853,17 @@ func (m model) View() string {
 	}
 	
 	// Calculate separator width based on terminal width (with fallback)
-	// Leave room for tactical panel on the right (about 40 chars)
+	// Leave room for tactical panel on the right (about 40 chars) except in table view
 	tacticalPanelSpace := 40
+	if m.view.Type == config.ViewTypeTable {
+		tacticalPanelSpace = 0 // Table view uses full width
+	}
 	separatorWidth := m.termWidth - tacticalPanelSpace
 	if separatorWidth < 80 {
 		separatorWidth = 80
 	}
-	if separatorWidth > 120 {
-		separatorWidth = 120
+	if m.view.Type != config.ViewTypeTable && separatorWidth > 120 {
+		separatorWidth = 120 // Only limit max width for non-table views
 	}
 	
 	separatorStyle := lipgloss.NewStyle().Foreground(m.theme.SeparatorColor)
@@ -949,10 +952,10 @@ func (m model) View() string {
 	// Combine header + content + footer for left side
 	leftContent := strings.Join(append(append(headerLines, contentLines...), footerLines...), "\n")
 	
-	// Add tactical panel as overlay on the right side
+	// Add tactical panel as overlay on the right side (except for table view which has fixed width)
 	tacticalPanel := m.renderTacticalPanel()
 	
-	if len(m.agents) > 0 && tacticalPanel != "" && m.termWidth > 100 {
+	if len(m.agents) > 0 && tacticalPanel != "" && m.termWidth > 100 && m.view.Type != config.ViewTypeTable {
 		// Tactical Panel: Width(35) + Padding(1,2) + Border = 37 chars total
 		tacticalPanelWidth := 37
 		
@@ -2957,6 +2960,9 @@ func (m *model) updateViewportContent() {
 		content = m.renderDashboard()
 	} else if m.view.Type == config.ViewTypeNetworkMap {
 		content = m.renderNetworkMapView()
+	} else if m.view.Type == config.ViewTypeTable {
+		// Table view - render as table
+		content = m.renderTableView()
 	} else {
 		// Render agents to string
 		agentLines := m.renderAgents()
@@ -3229,6 +3235,180 @@ func (m model) renderAgentTreeWithViewAndContext(agent Agent, depth int, viewTyp
 	}
 
 	return lines
+}
+
+// renderTableView renders agents in a professional table format
+func (m model) renderTableView() string {
+	var lines []string
+	
+	// Table header style
+	headerStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TitleColor).
+		Bold(true)
+	
+	cellStyle := lipgloss.NewStyle().Foreground(m.theme.StatusColor)
+	privilegedStyle := lipgloss.NewStyle().Foreground(m.theme.PrivilegedUser).Bold(true)
+	normalUserStyle := lipgloss.NewStyle().Foreground(m.theme.NormalUser)
+	deadStyle := lipgloss.NewStyle().Foreground(m.theme.DeadColor)
+	sessionStyle := lipgloss.NewStyle().Foreground(m.theme.SessionColor)
+	beaconStyle := lipgloss.NewStyle().Foreground(m.theme.BeaconColor)
+	
+	// Column widths
+	idWidth := 10
+	typeWidth := 8
+	userHostWidth := 28
+	osWidth := 20
+	transportWidth := 10
+	ipWidth := 22
+	
+	// Build header with proper width handling  
+	headerRow := fmt.Sprintf("│%s│%s│%s│%s│%s│%s│",
+		headerStyle.Width(idWidth+2).Align(lipgloss.Center).Render("Agent ID"),
+		headerStyle.Width(typeWidth+2).Align(lipgloss.Center).Render("Type"),
+		headerStyle.Width(userHostWidth+2).Align(lipgloss.Center).Render("User@Host"),
+		headerStyle.Width(osWidth+2).Align(lipgloss.Center).Render("OS"),
+		headerStyle.Width(transportWidth+2).Align(lipgloss.Center).Render("Transport"),
+		headerStyle.Width(ipWidth+2).Align(lipgloss.Center).Render("IP Address"))
+	
+	// Calculate total width: sum of (width+2) for each column + 7 for the │ separators
+	totalWidth := (idWidth+2) + (typeWidth+2) + (userHostWidth+2) + (osWidth+2) + (transportWidth+2) + (ipWidth+2) + 7
+	
+	// Top border
+	lines = append(lines, "┌"+strings.Repeat("─", totalWidth-2)+"┐")
+	lines = append(lines, headerRow)
+	lines = append(lines, "├"+strings.Repeat("─", totalWidth-2)+"┤")
+	
+	// Flatten agents (no tree structure in table view)
+	flatAgents := m.flattenAgents(m.agents)
+	
+	// Sort: sessions first, then beacons, dead last
+	sort.Slice(flatAgents, func(i, j int) bool {
+		if flatAgents[i].IsDead != flatAgents[j].IsDead {
+			return !flatAgents[i].IsDead // Live agents first
+		}
+		if flatAgents[i].IsSession != flatAgents[j].IsSession {
+			return flatAgents[i].IsSession // Sessions before beacons
+		}
+		return flatAgents[i].Hostname < flatAgents[j].Hostname
+	})
+	
+	// Render rows
+	for _, agent := range flatAgents {
+		// Determine styles based on agent state
+		var idStyle, typeStyle, userHostStyle, osStyle, transportStyle, ipStyle lipgloss.Style
+		
+		if agent.IsDead {
+			idStyle = deadStyle
+			typeStyle = deadStyle
+			userHostStyle = deadStyle
+			osStyle = deadStyle
+			transportStyle = deadStyle
+			ipStyle = deadStyle
+		} else {
+			idStyle = cellStyle
+			if agent.IsSession {
+				typeStyle = sessionStyle
+			} else {
+				typeStyle = beaconStyle
+			}
+			
+			if agent.IsPrivileged {
+				userHostStyle = privilegedStyle
+			} else {
+				userHostStyle = normalUserStyle
+			}
+			
+			osStyle = cellStyle
+			transportStyle = cellStyle
+			ipStyle = cellStyle
+		}
+		
+		// Truncate long fields
+		agentID := agent.ID
+		if len(agentID) > idWidth {
+			agentID = agentID[:idWidth-2] + ".."
+		}
+		
+		typeStr := "beacon"
+		if agent.IsSession {
+			typeStr = "session"
+		}
+		if agent.IsDead {
+			typeStr = "dead"
+		}
+		
+		userHost := fmt.Sprintf("%s@%s", agent.Username, agent.Hostname)
+		if len(userHost) > userHostWidth {
+			userHost = userHost[:userHostWidth-2] + ".."
+		}
+		
+		// OS with architecture
+		osStr := agent.OS
+		if agent.Arch != "" {
+			osStr = fmt.Sprintf("%s %s", agent.OS, agent.Arch)
+		}
+		if len(osStr) > osWidth {
+			osStr = osStr[:osWidth-2] + ".."
+		}
+		
+		transport := agent.Transport
+		if len(transport) > transportWidth {
+			transport = transport[:transportWidth-2] + ".."
+		}
+		
+		ipAddr := agent.RemoteAddress
+		if len(ipAddr) > ipWidth {
+			ipAddr = ipAddr[:ipWidth-2] + ".."
+		}
+		
+		// Build row - use same format as header (no spaces in format, width+2 for padding)
+		row := fmt.Sprintf("│%s│%s│%s│%s│%s│%s│",
+			idStyle.Width(idWidth+2).Align(lipgloss.Left).Render(agentID),
+			typeStyle.Width(typeWidth+2).Align(lipgloss.Left).Render(typeStr),
+			userHostStyle.Width(userHostWidth+2).Align(lipgloss.Left).Render(userHost),
+			osStyle.Width(osWidth+2).Align(lipgloss.Left).Render(osStr),
+			transportStyle.Width(transportWidth+2).Align(lipgloss.Left).Render(transport),
+			ipStyle.Width(ipWidth+2).Align(lipgloss.Left).Render(ipAddr))
+		
+		lines = append(lines, row)
+	}
+	
+	// Bottom border
+	lines = append(lines, "└"+strings.Repeat("─", totalWidth-2)+"┘")
+	
+	// Add summary
+	sessionCount := 0
+	beaconCount := 0
+	deadCount := 0
+	for _, agent := range flatAgents {
+		if agent.IsDead {
+			deadCount++
+		} else if agent.IsSession {
+			sessionCount++
+		} else {
+			beaconCount++
+		}
+	}
+	
+	summary := fmt.Sprintf("\n%s  %s  %s",
+		sessionStyle.Render(fmt.Sprintf("◆ %d sessions", sessionCount)),
+		beaconStyle.Render(fmt.Sprintf("◇ %d beacons", beaconCount)),
+		deadStyle.Render(fmt.Sprintf("💀 %d dead", deadCount)))
+	lines = append(lines, summary)
+	
+	return strings.Join(lines, "\n")
+}
+
+// flattenAgents converts hierarchical agent tree to flat list
+func (m model) flattenAgents(agents []Agent) []Agent {
+	var flat []Agent
+	for _, agent := range agents {
+		flat = append(flat, agent)
+		if len(agent.Children) > 0 {
+			flat = append(flat, m.flattenAgents(agent.Children)...)
+		}
+	}
+	return flat
 }
 
 func (m model) renderAgents() []string {

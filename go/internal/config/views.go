@@ -11,6 +11,7 @@ type ViewType int
 const (
 	ViewTypeTree ViewType = iota // Current tree layout with arrows
 	ViewTypeBox                  // Compact box with side connectors
+	ViewTypeTable                // Professional table view with columns
 	ViewTypeDashboard            // Dashboard with analytics panels
 	ViewTypeNetworkMap           // Network topology map with subnet grouping
 )
@@ -20,6 +21,7 @@ func GetView(index int) View {
 	views := []View{
 		{Name: "Tree", Type: ViewTypeTree},
 		{Name: "Box", Type: ViewTypeBox},
+		{Name: "Table", Type: ViewTypeTable},
 		{Name: "Dashboard", Type: ViewTypeDashboard},
 		{Name: "Network Map", Type: ViewTypeNetworkMap},
 	}
@@ -28,5 +30,5 @@ func GetView(index int) View {
 
 // GetViewCount returns the total number of available views
 func GetViewCount() int {
-	return 4
+	return 5
 }

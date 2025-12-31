@@ -68,6 +68,10 @@ var themes = []Theme{
 	gruvboxTheme(),
 	tokyoNightTheme(),
 	monokaiTheme(),
+	catppuccinMochaTheme(),
+	catppuccinMacchiatoTheme(),
+	catppuccinFrappeTheme(),
+	// catppuccinLatteTheme(), // Light theme - disabled (doesn't work on dark terminals)
 }
 
 // defaultTheme - Current Dracula-inspired theme (DEFAULT)
@@ -548,5 +552,161 @@ func monokaiTheme() Theme {
 		ProtocolBg:      lipgloss.Color("#1a1a2a"),
 		TacticalPanelBg: lipgloss.Color("#1e1f1c"),
 		HeaderBg:        lipgloss.Color("#1a1a1a"),
+	}
+}
+
+// catppuccinMochaTheme - Catppuccin Mocha (dark, warm)
+func catppuccinMochaTheme() Theme {
+	return Theme{
+		Name:            "Catppuccin Mocha",
+		TitleColor:      lipgloss.Color("#89b4fa"), // Blue
+		LogoColor:       lipgloss.Color("#cba6f7"), // Mauve
+		StatusColor:     lipgloss.Color("#bac2de"), // Subtext1
+		SessionColor:    lipgloss.Color("#a6e3a1"), // Green
+		BeaconColor:     lipgloss.Color("#f9e2af"), // Yellow
+		DeadColor:       lipgloss.Color("#6c7086"), // Surface2 (muted)
+		PrivilegedUser:  lipgloss.Color("#f38ba8"), // Red
+		NormalUser:      lipgloss.Color("#89dceb"), // Sky
+		HostnameColor:   lipgloss.Color("#89dceb"), // Sky
+		ProtocolMTLS:    lipgloss.Color("#cba6f7"), // Mauve
+		ProtocolHTTP:    lipgloss.Color("#89b4fa"), // Blue
+		ProtocolDNS:     lipgloss.Color("#94e2d5"), // Teal
+		ProtocolTCP:     lipgloss.Color("#fab387"), // Peach
+		ProtocolDefault: lipgloss.Color("#89dceb"), // Sky
+		NewBadgeColor:   lipgloss.Color("#f9e2af"), // Yellow
+		PrivBadgeColor:  lipgloss.Color("#f38ba8"), // Red
+		TacticalBorder:  lipgloss.Color("#89b4fa"), // Blue
+		TacticalSection: lipgloss.Color("#cba6f7"), // Mauve
+		TacticalValue:   lipgloss.Color("#a6e3a1"), // Green
+		TacticalMuted:   lipgloss.Color("#585b70"), // Surface1
+		StatsColor:      lipgloss.Color("#89b4fa"), // Blue
+		SeparatorColor:  lipgloss.Color("#45475a"), // Surface0
+		HelpColor:       lipgloss.Color("#6c7086"), // Surface2
+		// Background colors - Catppuccin Mocha authentic backgrounds
+		SessionBg:       lipgloss.Color("#1e1e2e"), // Base with green tint
+		BeaconBg:        lipgloss.Color("#1e1e2e"), // Base with yellow tint
+		DeadBg:          lipgloss.Color("#181825"), // Mantle
+		PrivilegedBg:    lipgloss.Color("#1e1e2e"), // Base with red tint
+		NewBg:           lipgloss.Color("#1e1e2e"), // Base with yellow tint
+		ProtocolBg:      lipgloss.Color("#181825"), // Mantle
+		TacticalPanelBg: lipgloss.Color("#1e1e2e"), // Base
+		HeaderBg:        lipgloss.Color("#181825"), // Mantle
+	}
+}
+
+// catppuccinMacchiatoTheme - Catppuccin Macchiato (dark, cool)
+func catppuccinMacchiatoTheme() Theme {
+	return Theme{
+		Name:            "Catppuccin Macchiato",
+		TitleColor:      lipgloss.Color("#8aadf4"), // Blue
+		LogoColor:       lipgloss.Color("#c6a0f6"), // Mauve
+		StatusColor:     lipgloss.Color("#b8c0e0"), // Subtext1
+		SessionColor:    lipgloss.Color("#a6da95"), // Green
+		BeaconColor:     lipgloss.Color("#eed49f"), // Yellow
+		DeadColor:       lipgloss.Color("#5b6078"), // Surface2 (muted)
+		PrivilegedUser:  lipgloss.Color("#ed8796"), // Red
+		NormalUser:      lipgloss.Color("#91d7e3"), // Sky
+		HostnameColor:   lipgloss.Color("#91d7e3"), // Sky
+		ProtocolMTLS:    lipgloss.Color("#c6a0f6"), // Mauve
+		ProtocolHTTP:    lipgloss.Color("#8aadf4"), // Blue
+		ProtocolDNS:     lipgloss.Color("#8bd5ca"), // Teal
+		ProtocolTCP:     lipgloss.Color("#f5a97f"), // Peach
+		ProtocolDefault: lipgloss.Color("#91d7e3"), // Sky
+		NewBadgeColor:   lipgloss.Color("#eed49f"), // Yellow
+		PrivBadgeColor:  lipgloss.Color("#ed8796"), // Red
+		TacticalBorder:  lipgloss.Color("#8aadf4"), // Blue
+		TacticalSection: lipgloss.Color("#c6a0f6"), // Mauve
+		TacticalValue:   lipgloss.Color("#a6da95"), // Green
+		TacticalMuted:   lipgloss.Color("#494d64"), // Surface1
+		StatsColor:      lipgloss.Color("#8aadf4"), // Blue
+		SeparatorColor:  lipgloss.Color("#363a4f"), // Surface0
+		HelpColor:       lipgloss.Color("#5b6078"), // Surface2
+		// Background colors - Catppuccin Macchiato authentic backgrounds
+		SessionBg:       lipgloss.Color("#24273a"), // Base
+		BeaconBg:        lipgloss.Color("#24273a"), // Base
+		DeadBg:          lipgloss.Color("#1e2030"), // Mantle
+		PrivilegedBg:    lipgloss.Color("#24273a"), // Base
+		NewBg:           lipgloss.Color("#24273a"), // Base
+		ProtocolBg:      lipgloss.Color("#1e2030"), // Mantle
+		TacticalPanelBg: lipgloss.Color("#24273a"), // Base
+		HeaderBg:        lipgloss.Color("#1e2030"), // Mantle
+	}
+}
+
+// catppuccinFrappeTheme - Catppuccin Frappé (dark, balanced)
+func catppuccinFrappeTheme() Theme {
+	return Theme{
+		Name:            "Catppuccin Frappé",
+		TitleColor:      lipgloss.Color("#8caaee"), // Blue
+		LogoColor:       lipgloss.Color("#ca9ee6"), // Mauve
+		StatusColor:     lipgloss.Color("#b5bfe2"), // Subtext1
+		SessionColor:    lipgloss.Color("#a6d189"), // Green
+		BeaconColor:     lipgloss.Color("#e5c890"), // Yellow
+		DeadColor:       lipgloss.Color("#626880"), // Surface2 (muted)
+		PrivilegedUser:  lipgloss.Color("#e78284"), // Red
+		NormalUser:      lipgloss.Color("#99d1db"), // Sky
+		HostnameColor:   lipgloss.Color("#99d1db"), // Sky
+		ProtocolMTLS:    lipgloss.Color("#ca9ee6"), // Mauve
+		ProtocolHTTP:    lipgloss.Color("#8caaee"), // Blue
+		ProtocolDNS:     lipgloss.Color("#81c8be"), // Teal
+		ProtocolTCP:     lipgloss.Color("#ef9f76"), // Peach
+		ProtocolDefault: lipgloss.Color("#99d1db"), // Sky
+		NewBadgeColor:   lipgloss.Color("#e5c890"), // Yellow
+		PrivBadgeColor:  lipgloss.Color("#e78284"), // Red
+		TacticalBorder:  lipgloss.Color("#8caaee"), // Blue
+		TacticalSection: lipgloss.Color("#ca9ee6"), // Mauve
+		TacticalValue:   lipgloss.Color("#a6d189"), // Green
+		TacticalMuted:   lipgloss.Color("#51576d"), // Surface1
+		StatsColor:      lipgloss.Color("#8caaee"), // Blue
+		SeparatorColor:  lipgloss.Color("#414559"), // Surface0
+		HelpColor:       lipgloss.Color("#626880"), // Surface2
+		// Background colors - Catppuccin Frappé authentic backgrounds
+		SessionBg:       lipgloss.Color("#303446"), // Base
+		BeaconBg:        lipgloss.Color("#303446"), // Base
+		DeadBg:          lipgloss.Color("#292c3c"), // Mantle
+		PrivilegedBg:    lipgloss.Color("#303446"), // Base
+		NewBg:           lipgloss.Color("#303446"), // Base
+		ProtocolBg:      lipgloss.Color("#292c3c"), // Mantle
+		TacticalPanelBg: lipgloss.Color("#303446"), // Base
+		HeaderBg:        lipgloss.Color("#292c3c"), // Mantle
+	}
+}
+
+// catppuccinLatteTheme - Catppuccin Latte (light theme)
+func catppuccinLatteTheme() Theme {
+	return Theme{
+		Name:            "Catppuccin Latte",
+		TitleColor:      lipgloss.Color("#1e66f5"), // Blue
+		LogoColor:       lipgloss.Color("#8839ef"), // Mauve
+		StatusColor:     lipgloss.Color("#5c5f77"), // Subtext1
+		SessionColor:    lipgloss.Color("#40a02b"), // Green
+		BeaconColor:     lipgloss.Color("#df8e1d"), // Yellow
+		DeadColor:       lipgloss.Color("#9ca0b0"), // Surface2 (muted)
+		PrivilegedUser:  lipgloss.Color("#d20f39"), // Red
+		NormalUser:      lipgloss.Color("#04a5e5"), // Sky
+		HostnameColor:   lipgloss.Color("#04a5e5"), // Sky
+		ProtocolMTLS:    lipgloss.Color("#8839ef"), // Mauve
+		ProtocolHTTP:    lipgloss.Color("#1e66f5"), // Blue
+		ProtocolDNS:     lipgloss.Color("#179299"), // Teal
+		ProtocolTCP:     lipgloss.Color("#fe640b"), // Peach
+		ProtocolDefault: lipgloss.Color("#04a5e5"), // Sky
+		NewBadgeColor:   lipgloss.Color("#df8e1d"), // Yellow
+		PrivBadgeColor:  lipgloss.Color("#d20f39"), // Red
+		TacticalBorder:  lipgloss.Color("#1e66f5"), // Blue
+		TacticalSection: lipgloss.Color("#8839ef"), // Mauve
+		TacticalValue:   lipgloss.Color("#40a02b"), // Green
+		TacticalMuted:   lipgloss.Color("#acb0be"), // Surface1
+		StatsColor:      lipgloss.Color("#1e66f5"), // Blue
+		SeparatorColor:  lipgloss.Color("#ccd0da"), // Surface0
+		HelpColor:       lipgloss.Color("#9ca0b0"), // Surface2
+		// Background colors - Catppuccin Latte light backgrounds
+		SessionBg:       lipgloss.Color("#eff1f5"), // Base
+		BeaconBg:        lipgloss.Color("#eff1f5"), // Base
+		DeadBg:          lipgloss.Color("#e6e9ef"), // Mantle
+		PrivilegedBg:    lipgloss.Color("#eff1f5"), // Base
+		NewBg:           lipgloss.Color("#eff1f5"), // Base
+		ProtocolBg:      lipgloss.Color("#e6e9ef"), // Mantle
+		TacticalPanelBg: lipgloss.Color("#eff1f5"), // Base
+		HeaderBg:        lipgloss.Color("#e6e9ef"), // Mantle
 	}
 }
