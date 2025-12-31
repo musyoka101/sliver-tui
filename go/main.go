@@ -145,6 +145,7 @@ type model struct {
 	
 	// Help menu
 	showHelp        bool              // Flag to show/hide help menu
+	helpViewport    viewport.Model    // Viewport for scrolling help content
 }
 
 func (m model) Init() tea.Cmd {
@@ -169,7 +170,46 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "?":
 			// Toggle help menu
 			m.showHelp = !m.showHelp
+			// When opening help, initialize viewport content
+			if m.showHelp {
+				// Build and set help content
+				help := m.buildHelpContent()
+				m.helpViewport.SetContent(help)
+				m.helpViewport.GotoTop()
+			}
 			return m, nil
+		}
+		
+		// If help menu is open, handle scrolling keys
+		if m.showHelp {
+			switch msg.String() {
+			case "up", "k":
+				m.helpViewport.LineUp(1)
+				return m, nil
+			case "down", "j":
+				m.helpViewport.LineDown(1)
+				return m, nil
+			case "pgup":
+				m.helpViewport.ViewUp()
+				return m, nil
+			case "pgdown":
+				m.helpViewport.ViewDown()
+				return m, nil
+			case "home", "g":
+				m.helpViewport.GotoTop()
+				return m, nil
+			case "end", "G":
+				m.helpViewport.GotoBottom()
+				return m, nil
+			case "q", "esc":
+				// Close help menu
+				m.showHelp = false
+				return m, nil
+			}
+		}
+		
+		// Normal view key handling
+		switch msg.String() {
 		case "r":
 			m.loading = true
 			return m, fetchAgentsCmd
@@ -402,7 +442,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.MouseMsg:
-		// Handle mouse events
+		// If help menu is open, handle mouse scrolling
+		if m.showHelp {
+			switch msg.Type {
+			case tea.MouseWheelUp:
+				m.helpViewport.LineUp(3)
+				return m, nil
+			case tea.MouseWheelDown:
+				m.helpViewport.LineDown(3)
+				return m, nil
+			}
+			return m, nil
+		}
+		
+		// Handle mouse events for normal view
 		switch msg.Type {
 		case tea.MouseLeft:
 			// Left click - select agent or interact with UI element
@@ -489,12 +542,38 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			headerFooterHeight := 10 // Reserve 3 for header + 7 for footer
 			m.viewport = viewport.New(msg.Width, msg.Height-headerFooterHeight)
 			m.viewport.YPosition = 3 // Start after header (3 lines)
+			
+			// Initialize help viewport
+			helpWidth := 90
+			if msg.Width > 100 {
+				helpWidth = msg.Width - 20
+			}
+			helpHeight := msg.Height - 10
+			if helpHeight < 20 {
+				helpHeight = 20
+			}
+			m.helpViewport = viewport.New(helpWidth, helpHeight)
+			
 			m.ready = true
 		} else {
 			// Update viewport dimensions on resize
 			headerFooterHeight := 10
 			m.viewport.Width = msg.Width
 			m.viewport.Height = msg.Height - headerFooterHeight
+			
+			// Update help viewport dimensions if help is open
+			if m.showHelp {
+				helpWidth := 90
+				if msg.Width > 100 {
+					helpWidth = msg.Width - 20
+				}
+				helpHeight := msg.Height - 10
+				if helpHeight < 20 {
+					helpHeight = 20
+				}
+				m.helpViewport.Width = helpWidth
+				m.helpViewport.Height = helpHeight
+			}
 		}
 		
 		return m, nil
@@ -870,7 +949,10 @@ func (m model) renderAlertPanel() string {
 func (m model) View() string {
 	// Show help menu immediately if active (skip all other rendering)
 	if m.showHelp {
-		return m.renderHelpMenu()
+		// Need to use pointer receiver for renderHelpMenu
+		// Create a mutable copy to allow viewport updates
+		mPtr := m
+		return (&mPtr).renderHelpMenu()
 	}
 	
 	// Build header (title + status) - this is FIXED at top, not scrollable
@@ -1407,88 +1489,163 @@ func (m model) renderAgentDetailsPanel() string {
 	return panelStyle.Render(strings.Join(lines, "\n"))
 }
 
-// renderHelpMenu renders a comprehensive help overlay
-func (m model) renderHelpMenu() string {
+// buildHelpContent builds the styled help content text
+func (m *model) buildHelpContent() string {
 	titleColor := m.theme.TitleColor
 	descColor := m.theme.TacticalValue
 	
-	help := `
-╔════════════════════════════════════════════════════════════════════════════════╗
-║                    🎯 SLIVER C2 TUI - HELP MENU                               ║
-╚════════════════════════════════════════════════════════════════════════════════╝
-
-GENERAL CONTROLS
-  ?             Toggle this help menu
-  q, Ctrl+C     Quit application
-  r             Refresh agents from Sliver server
-  ESC           Deselect agent / Clear number buffer
-
-VIEW CONTROLS
-  v             Cycle through views (Tree → Box → Table → Dashboard → Network Map)
-  d             Jump directly to Dashboard view
-  t             Cycle through color themes
-  i             Toggle icon style (Nerd Font ↔ Emoji)
-
-DASHBOARD NAVIGATION (Dashboard View Only)
-  Tab           Next dashboard page
-  Shift+Tab     Previous dashboard page
-  F1            Jump to OVERVIEW page
-  F2            Jump to NETWORK INTEL page
-  F3            Jump to OPERATIONS page
-  F4            Jump to SECURITY page
-  F5            Jump to ANALYTICS page
-
-NETWORK TOPOLOGY (Dashboard & Network Map)
-  e             Expand/collapse all subnets
-  0-9           Enter subnet number (multi-digit supported)
-  Enter         Toggle selected subnet expand/collapse
-
-SCROLLING
-  ↑/k           Scroll up
-  ↓/j           Scroll down
-  PgUp/u        Page up
-  PgDn/d        Page down
-  Home/g        Go to top
-  End/G         Go to bottom
-
-MOUSE CONTROLS
-  Left Click    Select/deselect agent (shows details panel)
-  Click Alert   Jump to agent associated with alert
-  Scroll Wheel  Scroll content up/down
-
-AGENT STATUS INDICATORS
-  🟢 Green      Active session (interactive)
-  🔵 Blue       Active beacon (check-in based)
-  🔴 Red        Dead agent (missed check-ins)
-  💎 Diamond    Privileged access (SYSTEM/root)
-  ✨ Sparkle    Recently connected (new agent)
-
-ALERT PANEL
-  🔴 Critical   Session lost, beacon disconnected
-  🟡 Warning    Beacon missed check-in
-  🟢 Success    New connection, privilege escalation
-  🔵 Info       State changes, task updates
-  • Click any alert to jump to that agent
-  • Alerts auto-expire after 30 seconds
-
-VIEW TYPES
-  Tree View     Hierarchical tree layout with C2 logo
-  Box View      Boxed layout with borders
-  Table View    Spreadsheet-style table
-  Dashboard     Analytics with 5 pages of tactical intelligence
-  Network Map   Visual network topology with subnet grouping
-
-Press ? to close • github.com/musyoka101/sliver-graphs
-`
+	// Build styled help content with proper colors
+	var helpLines []string
 	
-	styled := lipgloss.NewStyle().
-		Foreground(descColor).
-		Padding(1, 2).
+	// Header
+	helpLines = append(helpLines, 
+		lipgloss.NewStyle().Foreground(titleColor).Bold(true).Render("╔════════════════════════════════════════════════════════════════════════════════╗"),
+		lipgloss.NewStyle().Foreground(titleColor).Bold(true).Render("║                    🎯 SLIVER C2 TUI - HELP MENU                               ║"),
+		lipgloss.NewStyle().Foreground(titleColor).Bold(true).Render("╚════════════════════════════════════════════════════════════════════════════════╝"),
+		"",
+	)
+	
+	sectionStyle := lipgloss.NewStyle().Foreground(titleColor).Bold(true)
+	textStyle := lipgloss.NewStyle().Foreground(descColor)
+	
+	// GENERAL CONTROLS
+	helpLines = append(helpLines, sectionStyle.Render("GENERAL CONTROLS"))
+	helpLines = append(helpLines, textStyle.Render("  ?             Toggle this help menu"))
+	helpLines = append(helpLines, textStyle.Render("  q, Ctrl+C     Quit application"))
+	helpLines = append(helpLines, textStyle.Render("  r             Refresh agents from Sliver server"))
+	helpLines = append(helpLines, textStyle.Render("  ESC           Deselect agent / Clear number buffer"))
+	helpLines = append(helpLines, "")
+	
+	// VIEW CONTROLS
+	helpLines = append(helpLines, sectionStyle.Render("VIEW CONTROLS"))
+	helpLines = append(helpLines, textStyle.Render("  v             Cycle through views (Tree → Box → Table → Dashboard → Network Map)"))
+	helpLines = append(helpLines, textStyle.Render("  d             Jump directly to Dashboard view"))
+	helpLines = append(helpLines, textStyle.Render("  t             Cycle through color themes"))
+	helpLines = append(helpLines, textStyle.Render("  i             Toggle icon style (Nerd Font ↔ Emoji)"))
+	helpLines = append(helpLines, "")
+	
+	// DASHBOARD NAVIGATION
+	helpLines = append(helpLines, sectionStyle.Render("DASHBOARD NAVIGATION (Dashboard View Only)"))
+	helpLines = append(helpLines, textStyle.Render("  Tab           Next dashboard page"))
+	helpLines = append(helpLines, textStyle.Render("  Shift+Tab     Previous dashboard page"))
+	helpLines = append(helpLines, textStyle.Render("  F1            Jump to OVERVIEW page"))
+	helpLines = append(helpLines, textStyle.Render("  F2            Jump to NETWORK INTEL page"))
+	helpLines = append(helpLines, textStyle.Render("  F3            Jump to OPERATIONS page"))
+	helpLines = append(helpLines, textStyle.Render("  F4            Jump to SECURITY page"))
+	helpLines = append(helpLines, textStyle.Render("  F5            Jump to ANALYTICS page"))
+	helpLines = append(helpLines, "")
+	
+	// NETWORK TOPOLOGY
+	helpLines = append(helpLines, sectionStyle.Render("NETWORK TOPOLOGY (Dashboard & Network Map)"))
+	helpLines = append(helpLines, textStyle.Render("  e             Expand/collapse all subnets"))
+	helpLines = append(helpLines, textStyle.Render("  0-9           Enter subnet number (multi-digit supported)"))
+	helpLines = append(helpLines, textStyle.Render("  Enter         Toggle selected subnet expand/collapse"))
+	helpLines = append(helpLines, "")
+	
+	// SCROLLING (Help Menu)
+	helpLines = append(helpLines, sectionStyle.Render("SCROLLING (Help Menu)"))
+	helpLines = append(helpLines, textStyle.Render("  ↑/k           Scroll up one line"))
+	helpLines = append(helpLines, textStyle.Render("  ↓/j           Scroll down one line"))
+	helpLines = append(helpLines, textStyle.Render("  PgUp          Page up"))
+	helpLines = append(helpLines, textStyle.Render("  PgDn          Page down"))
+	helpLines = append(helpLines, textStyle.Render("  Home/g        Go to top"))
+	helpLines = append(helpLines, textStyle.Render("  End/G         Go to bottom"))
+	helpLines = append(helpLines, "")
+	
+	// SCROLLING (Content View)
+	helpLines = append(helpLines, sectionStyle.Render("SCROLLING (Content View)"))
+	helpLines = append(helpLines, textStyle.Render("  ↑/k           Scroll up"))
+	helpLines = append(helpLines, textStyle.Render("  ↓/j           Scroll down"))
+	helpLines = append(helpLines, textStyle.Render("  PgUp/u        Page up"))
+	helpLines = append(helpLines, textStyle.Render("  PgDn/d        Page down"))
+	helpLines = append(helpLines, textStyle.Render("  Home/g        Go to top"))
+	helpLines = append(helpLines, textStyle.Render("  End/G         Go to bottom"))
+	helpLines = append(helpLines, "")
+	
+	// MOUSE CONTROLS
+	helpLines = append(helpLines, sectionStyle.Render("MOUSE CONTROLS"))
+	helpLines = append(helpLines, textStyle.Render("  Left Click    Select/deselect agent (shows details panel)"))
+	helpLines = append(helpLines, textStyle.Render("  Click Alert   Jump to agent associated with alert"))
+	helpLines = append(helpLines, textStyle.Render("  Scroll Wheel  Scroll content up/down (or help menu when open)"))
+	helpLines = append(helpLines, "")
+	
+	// AGENT STATUS INDICATORS
+	helpLines = append(helpLines, sectionStyle.Render("AGENT STATUS INDICATORS"))
+	helpLines = append(helpLines, textStyle.Render("  🟢 Green      Active session (interactive)"))
+	helpLines = append(helpLines, textStyle.Render("  🔵 Blue       Active beacon (check-in based)"))
+	helpLines = append(helpLines, textStyle.Render("  🔴 Red        Dead agent (missed check-ins)"))
+	helpLines = append(helpLines, textStyle.Render("  💎 Diamond    Privileged access (SYSTEM/root)"))
+	helpLines = append(helpLines, textStyle.Render("  ✨ Sparkle    Recently connected (new agent)"))
+	helpLines = append(helpLines, "")
+	
+	// ALERT PANEL
+	helpLines = append(helpLines, sectionStyle.Render("ALERT PANEL"))
+	helpLines = append(helpLines, textStyle.Render("  🔴 Critical   Session lost, beacon disconnected"))
+	helpLines = append(helpLines, textStyle.Render("  🟡 Warning    Beacon missed check-in"))
+	helpLines = append(helpLines, textStyle.Render("  🟢 Success    New connection, privilege escalation"))
+	helpLines = append(helpLines, textStyle.Render("  🔵 Info       State changes, task updates"))
+	helpLines = append(helpLines, textStyle.Render("  • Click any alert to jump to that agent"))
+	helpLines = append(helpLines, textStyle.Render("  • Alerts auto-expire after 30 seconds"))
+	helpLines = append(helpLines, "")
+	
+	// VIEW TYPES
+	helpLines = append(helpLines, sectionStyle.Render("VIEW TYPES"))
+	helpLines = append(helpLines, textStyle.Render("  Tree View     Hierarchical tree layout with C2 logo"))
+	helpLines = append(helpLines, textStyle.Render("  Box View      Boxed layout with borders"))
+	helpLines = append(helpLines, textStyle.Render("  Table View    Spreadsheet-style table"))
+	helpLines = append(helpLines, textStyle.Render("  Dashboard     Analytics with 5 pages of tactical intelligence"))
+	helpLines = append(helpLines, textStyle.Render("  Network Map   Visual network topology with subnet grouping"))
+	helpLines = append(helpLines, "")
+	
+	// Footer
+	helpLines = append(helpLines, textStyle.Render("Press ? or ESC to close • github.com/musyoka101/sliver-graphs"))
+	
+	// Join all lines
+	return strings.Join(helpLines, "\n")
+}
+
+// renderHelpMenu renders a comprehensive help overlay
+func (m *model) renderHelpMenu() string {
+	titleColor := m.theme.TitleColor
+	descColor := m.theme.TacticalValue
+	
+	// Update viewport size to fit terminal - need wider viewport for content
+	helpWidth := m.termWidth - 10
+	if helpWidth > 100 {
+		helpWidth = 100
+	}
+	if helpWidth < 82 {
+		helpWidth = 82
+	}
+	
+	helpHeight := m.termHeight - 6
+	if helpHeight < 20 {
+		helpHeight = 20
+	}
+	
+	// Only update viewport dimensions, NOT content (content is set when help opens)
+	m.helpViewport.Width = helpWidth
+	m.helpViewport.Height = helpHeight
+	
+	// Render viewport with border
+	viewportContent := m.helpViewport.View()
+	
+	bordered := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(titleColor).
-		Render(help)
+		Padding(0, 1).
+		Render(viewportContent)
 	
-	return styled
+	// Add scroll indicator if content is scrollable
+	scrollInfo := ""
+	if m.helpViewport.TotalLineCount() > m.helpViewport.Height {
+		scrollPercent := int(m.helpViewport.ScrollPercent() * 100)
+		scrollInfo = lipgloss.NewStyle().
+			Foreground(descColor).
+			Render(fmt.Sprintf("\n  📜 Scroll: %d%% • ↑↓/jk: line • PgUp/PgDn: page • Home/End: jump • ?/ESC: close", scrollPercent))
+	}
+	
+	return bordered + scrollInfo
 }
 
 func (m model) renderTacticalPanel() string {
