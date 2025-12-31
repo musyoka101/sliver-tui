@@ -140,6 +140,7 @@ type model struct {
 	// Mouse interaction
 	selectedAgentID string            // Currently selected agent ID
 	agentLineMap    map[int]string    // Map viewport line number to agent ID
+	alertLineMap    map[int]string    // Map viewport line number to agent ID (from alerts)
 	mouseEnabled    bool              // Track if mouse is enabled
 }
 
@@ -415,6 +416,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.ready {
 					m.updateViewportContent()
 				}
+				return m, nil
+			}
+			
+			// Check if clicked on an alert line (click-to-jump to agent)
+			if agentID, exists := m.alertLineMap[actualLine]; exists {
+				// Jump to and select the agent associated with this alert
+				m.selectedAgentID = agentID
+				m.contentDirty = true
+				if m.ready {
+					m.updateViewportContent()
+				}
+				return m, nil
 			}
 			return m, nil
 			
@@ -579,19 +592,19 @@ func (m *model) detectAgentChanges(newAgents []Agent) {
 				// Session-specific alerts
 				if agent.IsPrivileged {
 					m.alertManager.AddAlertWithDetails(alertType, alerts.CategoryPrivilegedSessionAcquired, 
-						"Privileged session connected", agent.Hostname, details)
+						"Privileged session connected", agent.Hostname, agent.ID, details)
 				} else {
 					m.alertManager.AddAlertWithDetails(alertType, alerts.CategorySessionAcquired, 
-						"Session connected", agent.Hostname, details)
+						"Session connected", agent.Hostname, agent.ID, details)
 				}
 			} else {
 				// Beacon-specific alerts
 				if agent.IsPrivileged {
 					m.alertManager.AddAlertWithDetails(alertType, alerts.CategoryPrivilegedBeaconAcquired, 
-						"Privileged beacon connected", agent.Hostname, details)
+						"Privileged beacon connected", agent.Hostname, agent.ID, details)
 				} else {
 					m.alertManager.AddAlertWithDetails(alertType, alerts.CategoryBeaconAcquired, 
-						"Beacon connected", agent.Hostname, details)
+						"Beacon connected", agent.Hostname, agent.ID, details)
 				}
 			}
 		}
@@ -602,9 +615,9 @@ func (m *model) detectAgentChanges(newAgents []Agent) {
 		if _, exists := newAgentMap[id]; !exists {
 			// Agent disappeared - differentiate between session and beacon
 			if oldAgent.IsSession {
-				m.alertManager.AddAlert(alerts.AlertCritical, alerts.CategorySessionDisconnected, "Session lost", oldAgent.Hostname)
+				m.alertManager.AddAlert(alerts.AlertCritical, alerts.CategorySessionDisconnected, "Session lost", oldAgent.Hostname, oldAgent.ID)
 			} else {
-				m.alertManager.AddAlert(alerts.AlertCritical, alerts.CategoryBeaconDisconnected, "Beacon lost", oldAgent.Hostname)
+				m.alertManager.AddAlert(alerts.AlertCritical, alerts.CategoryBeaconDisconnected, "Beacon lost", oldAgent.Hostname, oldAgent.ID)
 			}
 		}
 	}
@@ -614,7 +627,7 @@ func (m *model) detectAgentChanges(newAgents []Agent) {
 		if !agent.IsSession { // Only check beacons
 			// Check if beacon is late (this logic should be in your Agent struct or tracking)
 			if agent.IsDead {
-				m.alertManager.AddAlert(alerts.AlertWarning, alerts.CategoryBeaconMissed, "Beacon missed check-in", agent.Hostname)
+				m.alertManager.AddAlert(alerts.AlertWarning, alerts.CategoryBeaconMissed, "Beacon missed check-in", agent.Hostname, agent.ID)
 			}
 		}
 	}
@@ -630,7 +643,7 @@ func (m *model) detectAgentChanges(newAgents []Agent) {
 				}
 				details := fmt.Sprintf("(%s)", agentType)
 				m.alertManager.AddAlertWithDetails(alerts.AlertSuccess, alerts.CategoryPrivilegedAccess, 
-					"Privilege escalated", newAgent.Hostname, details)
+					"Privilege escalated", newAgent.Hostname, newAgent.ID, details)
 			}
 			
 			// Check if session state changed (beacon converted to session)
@@ -638,15 +651,15 @@ func (m *model) detectAgentChanges(newAgents []Agent) {
 				details := "(beacon→session)"
 				if newAgent.IsPrivileged {
 					m.alertManager.AddAlertWithDetails(alerts.AlertInfo, alerts.CategoryPrivilegedSessionOpened, 
-						"Beacon upgraded to privileged session", newAgent.Hostname, details)
+						"Beacon upgraded to privileged session", newAgent.Hostname, newAgent.ID, details)
 				} else {
 					m.alertManager.AddAlertWithDetails(alerts.AlertInfo, alerts.CategorySessionOpened, 
-						"Beacon upgraded to session", newAgent.Hostname, details)
+						"Beacon upgraded to session", newAgent.Hostname, newAgent.ID, details)
 				}
 			} else if !newAgent.IsSession && oldAgent.IsSession {
 				details := "(session→beacon)"
 				m.alertManager.AddAlertWithDetails(alerts.AlertInfo, alerts.CategorySessionClosed, 
-					"Session closed", newAgent.Hostname, details)
+					"Session closed", newAgent.Hostname, newAgent.ID, details)
 			}
 		}
 	}
@@ -661,7 +674,7 @@ func (m *model) detectAgentChanges(newAgents []Agent) {
 					oldPendingTasks := oldAgent.TasksCount - oldAgent.TasksCompleted
 					details := fmt.Sprintf("(%d→%d pending)", oldPendingTasks, pendingTasks)
 					m.alertManager.AddAlertWithDetails(alerts.AlertInfo, alerts.CategoryBeaconTaskQueued, 
-						"Task queued", newAgent.Hostname, details)
+						"Task queued", newAgent.Hostname, newAgent.ID, details)
 				}
 				
 				// Detect tasks completed
@@ -670,7 +683,7 @@ func (m *model) detectAgentChanges(newAgents []Agent) {
 					totalCount := newAgent.TasksCount
 					details := fmt.Sprintf("(%d/%d done)", completedCount, totalCount)
 					m.alertManager.AddAlertWithDetails(alerts.AlertSuccess, alerts.CategoryBeaconTaskComplete, 
-						"Task completed", newAgent.Hostname, details)
+						"Task completed", newAgent.Hostname, newAgent.ID, details)
 				}
 			}
 		}
@@ -1104,6 +1117,9 @@ func (m model) View() string {
 	// Check if there's enough space to show alerts without overlapping with right panel
 	alertPanel := m.renderAlertPanel()
 	if alertPanel != "" {
+		// Reset alert line map before rebuilding
+		m.alertLineMap = make(map[int]string)
+		
 		// Calculate if alerts would overlap with agent details/tactical panel
 		showAlerts := true
 		
@@ -1149,6 +1165,20 @@ func (m model) View() string {
 			alertStartLine := totalLines - len(alertPanelLines) - 2 // 2 lines from bottom for padding
 			if alertStartLine < 0 {
 				alertStartLine = 0
+			}
+			
+			// Build alert line map for mouse clicking
+			// Get active alerts and map their lines
+			if m.alertManager != nil {
+				activeAlerts := m.alertManager.GetAlerts()
+				// First line is border (index 0), alerts start at index 1
+				alertContentStartLine := alertStartLine + 1
+				for i, alert := range activeAlerts {
+					if alert.AgentID != "" {
+						// Map this alert's line to its agent ID
+						m.alertLineMap[alertContentStartLine+i] = alert.AgentID
+					}
+				}
 			}
 			
 			var result []string
@@ -4161,6 +4191,7 @@ func main() {
 		dnsCache:        make(map[string]string), // Initialize DNS cache
 		domainCache:     make(map[string]string), // Initialize domain cache (sessionID -> domain)
 		agentLineMap:    make(map[int]string),   // Initialize agent line map for mouse clicks
+		alertLineMap:    make(map[int]string),   // Initialize alert line map for mouse clicks
 		mouseEnabled:    true,                    // Enable mouse support
 	}
 

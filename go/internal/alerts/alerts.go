@@ -49,6 +49,7 @@ type Alert struct {
 	Category  AlertCategory
 	Message   string
 	AgentName string
+	AgentID   string        // Agent ID for click-to-jump functionality
 	Details   string        // Additional details (e.g., "3→4 pending")
 	Timestamp time.Time
 	TTL       time.Duration // How long to display
@@ -77,12 +78,12 @@ func NewAlertManager(maxAlerts int) *AlertManager {
 }
 
 // AddAlert adds a new alert to the queue
-func (am *AlertManager) AddAlert(alertType AlertType, category AlertCategory, message, agentName string) {
-	am.AddAlertWithDetails(alertType, category, message, agentName, "")
+func (am *AlertManager) AddAlert(alertType AlertType, category AlertCategory, message, agentName, agentID string) {
+	am.AddAlertWithDetails(alertType, category, message, agentName, agentID, "")
 }
 
 // AddAlertWithDetails adds a new alert with additional details to the queue
-func (am *AlertManager) AddAlertWithDetails(alertType AlertType, category AlertCategory, message, agentName, details string) {
+func (am *AlertManager) AddAlertWithDetails(alertType AlertType, category AlertCategory, message, agentName, agentID, details string) {
 	am.mu.Lock()
 	defer am.mu.Unlock()
 
@@ -121,6 +122,7 @@ func (am *AlertManager) AddAlertWithDetails(alertType AlertType, category AlertC
 		Category:  category,
 		Message:   message,
 		AgentName: agentName,
+		AgentID:   agentID,
 		Details:   details,
 		Timestamp: time.Now(),
 		TTL:       ttl,
