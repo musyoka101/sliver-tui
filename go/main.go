@@ -3651,25 +3651,24 @@ func (m model) renderAgentLine(agent Agent) []string {
 	
 	protocolBox := protocolBoxStyle.Render(strings.ToUpper(agent.Transport))
 	
-	line1 := fmt.Sprintf("%s%s%s%s %s %s %s  %s%s%s",
+	line1 := fmt.Sprintf("%s%s%s%s %s %s  %s%s%s %s",
 		connectorStyle.Render("╰────────"),
 		protocolBox,
 		connectorStyle.Render("────────"),
 		connectorStyle.Render(m.getAnimatedHorizontalArrow()),
-		lipgloss.NewStyle().Foreground(statusColor).Render(statusIcon),
 		osIcon,
 		hostTypeIcon,
 		lipgloss.NewStyle().Foreground(usernameColor).Bold(true).Render(fmt.Sprintf("%s@%s", agent.Username, agent.Hostname)),
 		deadBadge,
 		privBadge,
+		lipgloss.NewStyle().Foreground(statusColor).Render(statusIcon),
 	)
 
-	// Calculate indent for ID/IP lines - should align where the hostname starts
-	// Protocol box [ MTLS ] is ~8 chars, connector ────────── is 10, arrow ▶ is 1, 
-	// status icon ◆ is 1, space is 1, OS icon 🖥️ is 1, two spaces is 2
-	// Total before hostname starts: 8 + 10 + 1 + 1 + 1 + 1 + 2 = 24 chars (approximately)
-	// But we need to account for visual width of emojis which may render wider
-	idIpIndent := 28
+	// Calculate indent for ID/IP lines - should align under the OS/computer icon
+	// Protocol box [ MTLS ] = 8, connector ──────── = 8, arrow ▶ = 1, space = 1
+	// OS icon position = here (status icon moved to end of line)
+	// Accounting for emoji double-width rendering and arrow spacing
+	idIpIndent := 27
 	
 	// Build second line - ID with connector (aligned where hostname starts)
 	line2 := fmt.Sprintf("%s└─ ID: %s (%s)%s",
