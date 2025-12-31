@@ -1043,10 +1043,21 @@ func (m model) View() string {
 		// Calculate how many header lines we have
 		headerLineCount := len(headerLines)
 		
+		// For agent details panel, start immediately after header (line 0 of content)
+		// For tactical panel, start after header as before
+		panelStartLine := headerLineCount
+		if m.selectedAgentID != "" {
+			// Agent details: start right after header (higher on screen to avoid alert overlap)
+			panelStartLine = headerLineCount
+		} else {
+			// Tactical panel: start after header as normal
+			panelStartLine = headerLineCount
+		}
+		
 		// Ensure we have enough lines for the panel
 		totalLines := len(leftLines)
-		if headerLineCount + len(panelLines) > totalLines {
-			totalLines = headerLineCount + len(panelLines)
+		if panelStartLine + len(panelLines) > totalLines {
+			totalLines = panelStartLine + len(panelLines)
 		}
 		
 		// Build output by overlaying panel on right side
@@ -1076,8 +1087,8 @@ func (m model) View() string {
 					}
 				}
 				
-				// Overlay panel
-				panelLineIndex := i - headerLineCount
+				// Overlay panel starting from panelStartLine
+				panelLineIndex := i - panelStartLine
 				if panelLineIndex >= 0 && panelLineIndex < len(panelLines) {
 					line += panelLines[panelLineIndex]
 				}
@@ -1090,61 +1101,64 @@ func (m model) View() string {
 	}
 	
 	// Now add alert panel overlay in the footer area (bottom right)
-	// Position slightly left of tactical panel to accommodate wider width
-	alertPanel := m.renderAlertPanel()
-	if alertPanel != "" {
-		// Alert panel is 72 chars wide (70 content + 2 border), position it left of right edge
-		alertPanelWidth := 72 // Actual rendered width with border
-		
-		// Calculate position: from right edge, move left by alert panel width + some spacing
-		// This ensures the panel fits on screen and extends leftward as intended
-		alertPanelX := m.termWidth - alertPanelWidth // 0 padding - flush with right edge
-		if alertPanelX < 60 { // Minimum left position to avoid overlap with tree
-			alertPanelX = 60
-		}
-		
-		leftLines := strings.Split(leftContent, "\n")
-		alertPanelLines := strings.Split(alertPanel, "\n")
-		
-		// Position alert panel at the bottom (last N lines)
-		// Start from bottom and work up
-		totalLines := len(leftLines)
-		alertStartLine := totalLines - len(alertPanelLines) - 2 // 2 lines from bottom for padding
-		if alertStartLine < 0 {
-			alertStartLine = 0
-		}
-		
-		var result []string
-		for i := 0; i < totalLines; i++ {
-			line := ""
-			if i < len(leftLines) {
-				line = leftLines[i]
+	// If agent details panel is shown, hide alerts to avoid overlap
+	// Otherwise position alerts at bottom right
+	if m.selectedAgentID == "" {
+		alertPanel := m.renderAlertPanel()
+		if alertPanel != "" {
+			// Alert panel is 72 chars wide (70 content + 2 border), position it left of right edge
+			alertPanelWidth := 72 // Actual rendered width with border
+			
+			// Calculate position: from right edge, move left by alert panel width + some spacing
+			// This ensures the panel fits on screen and extends leftward as intended
+			alertPanelX := m.termWidth - alertPanelWidth // 0 padding - flush with right edge
+			if alertPanelX < 60 { // Minimum left position to avoid overlap with tree
+				alertPanelX = 60
 			}
 			
-			// Check if this line should have alert panel overlay
-			alertLineIndex := i - alertStartLine
-			if alertLineIndex >= 0 && alertLineIndex < len(alertPanelLines) {
-				currentWidth := lipgloss.Width(line)
-				
-				// Pad to alert panel position
-				if currentWidth < alertPanelX {
-					line += strings.Repeat(" ", alertPanelX-currentWidth)
-				} else if currentWidth > alertPanelX {
-					line = lipgloss.NewStyle().MaxWidth(alertPanelX).Render(line)
-					currentWidth = lipgloss.Width(line)
-					if currentWidth < alertPanelX {
-						line += strings.Repeat(" ", alertPanelX-currentWidth)
-					}
+			leftLines := strings.Split(leftContent, "\n")
+			alertPanelLines := strings.Split(alertPanel, "\n")
+			
+			// Position alert panel at the bottom (last N lines)
+			// Start from bottom and work up
+			totalLines := len(leftLines)
+			alertStartLine := totalLines - len(alertPanelLines) - 2 // 2 lines from bottom for padding
+			if alertStartLine < 0 {
+				alertStartLine = 0
+			}
+			
+			var result []string
+			for i := 0; i < totalLines; i++ {
+				line := ""
+				if i < len(leftLines) {
+					line = leftLines[i]
 				}
 				
-				// Add alert panel line
-				line += alertPanelLines[alertLineIndex]
+				// Check if this line should have alert panel overlay
+				alertLineIndex := i - alertStartLine
+				if alertLineIndex >= 0 && alertLineIndex < len(alertPanelLines) {
+					currentWidth := lipgloss.Width(line)
+					
+					// Pad to alert panel position
+					if currentWidth < alertPanelX {
+						line += strings.Repeat(" ", alertPanelX-currentWidth)
+					} else if currentWidth > alertPanelX {
+						line = lipgloss.NewStyle().MaxWidth(alertPanelX).Render(line)
+						currentWidth = lipgloss.Width(line)
+						if currentWidth < alertPanelX {
+							line += strings.Repeat(" ", alertPanelX-currentWidth)
+						}
+					}
+					
+					// Add alert panel line
+					line += alertPanelLines[alertLineIndex]
+				}
+				
+				result = append(result, line)
 			}
 			
-			result = append(result, line)
+			return strings.Join(result, "\n")
 		}
-		
-		return strings.Join(result, "\n")
 	}
 	
 	return leftContent
