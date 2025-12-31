@@ -1101,11 +1101,35 @@ func (m model) View() string {
 	}
 	
 	// Now add alert panel overlay in the footer area (bottom right)
-	// If agent details panel is shown, hide alerts to avoid overlap
-	// Otherwise position alerts at bottom right
-	if m.selectedAgentID == "" {
-		alertPanel := m.renderAlertPanel()
-		if alertPanel != "" {
+	// Check if there's enough space to show alerts without overlapping with right panel
+	alertPanel := m.renderAlertPanel()
+	if alertPanel != "" {
+		// Calculate if alerts would overlap with agent details/tactical panel
+		showAlerts := true
+		
+		if m.selectedAgentID != "" {
+			// Agent details panel is shown - check for vertical overlap
+			agentDetailsPanel := rightPanel // Use already rendered panel
+			agentDetailsPanelLines := strings.Split(agentDetailsPanel, "\n")
+			alertPanelLinesForCheck := strings.Split(alertPanel, "\n")
+			
+			leftLinesForCheck := strings.Split(leftContent, "\n")
+			totalLinesForCheck := len(leftLinesForCheck)
+			headerLineCount := len(headerLines)
+			
+			// Agent details starts at headerLineCount
+			agentDetailsEndLine := headerLineCount + len(agentDetailsPanelLines)
+			
+			// Alerts start from bottom
+			alertStartLineForCheck := totalLinesForCheck - len(alertPanelLinesForCheck) - 2
+			
+			// Check if they overlap (with 2 line buffer for spacing)
+			if agentDetailsEndLine + 2 >= alertStartLineForCheck {
+				showAlerts = false // Not enough space, hide alerts
+			}
+		}
+		
+		if showAlerts {
 			// Alert panel is 72 chars wide (70 content + 2 border), position it left of right edge
 			alertPanelWidth := 72 // Actual rendered width with border
 			
