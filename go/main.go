@@ -136,6 +136,11 @@ type model struct {
 	cachedContent   string // Last rendered content
 	contentDirty    bool   // Flag to force re-render
 	sparklineCache  SparklineCache // Cache for sparkline rendering
+	
+	// Mouse interaction
+	selectedAgentID string            // Currently selected agent ID
+	agentLineMap    map[int]string    // Map viewport line number to agent ID
+	mouseEnabled    bool              // Track if mouse is enabled
 }
 
 func (m model) Init() tea.Cmd {
@@ -357,9 +362,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		
-		// Escape key - clear number buffer
+		// Escape key - clear number buffer and deselect agent
 		case "esc":
 			m.numberBuffer = ""
+			if m.selectedAgentID != "" {
+				m.selectedAgentID = ""
+				m.contentDirty = true
+			}
 			if m.ready {
 				m.updateViewportContent()
 			}
@@ -385,14 +394,39 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.MouseMsg:
-		// Handle mouse clicks for interactive elements
-		if msg.Type == tea.MouseLeft {
-			// Check if in dashboard view
-			if m.viewIndex == 3 {
-				// TODO: Implement click detection for subnet expansion
-				// For now, we'll add a simple toggle mechanism with 'e' key
+		// Handle mouse events
+		switch msg.Type {
+		case tea.MouseLeft:
+			// Left click - select agent or interact with UI element
+			// Calculate the line number in viewport content
+			clickY := msg.Y - m.viewport.YPosition
+			actualLine := m.viewport.YOffset + clickY
+			
+			// Check if clicked on an agent line
+			if agentID, exists := m.agentLineMap[actualLine]; exists {
+				if m.selectedAgentID == agentID {
+					// Deselect if clicking same agent
+					m.selectedAgentID = ""
+				} else {
+					// Select the clicked agent
+					m.selectedAgentID = agentID
+				}
+				m.contentDirty = true
+				if m.ready {
+					m.updateViewportContent()
+				}
 			}
+			return m, nil
+			
+		case tea.MouseWheelUp:
+			// Scroll up
+			m.viewport.LineUp(3) // Scroll 3 lines at a time for smoother experience
+			
+		case tea.MouseWheelDown:
+			// Scroll down
+			m.viewport.LineDown(3) // Scroll 3 lines at a time for smoother experience
 		}
+		return m, nil
 
 	case tea.WindowSizeMsg:
 		// Capture terminal dimensions for responsive layout
@@ -981,33 +1015,41 @@ func (m model) View() string {
 	// Combine header + content + footer for left side
 	leftContent := strings.Join(append(append(headerLines, contentLines...), footerLines...), "\n")
 	
-	// Add tactical panel as overlay on the right side (except for table view which has fixed width)
-	tacticalPanel := m.renderTacticalPanel()
+	// Show agent details panel if an agent is selected, otherwise show tactical panel
+	var rightPanel string
+	var panelWidth int
 	
-	if len(m.agents) > 0 && tacticalPanel != "" && m.termWidth > 100 && m.view.Type != config.ViewTypeTable {
-		// Tactical Panel: Width(35) + Padding(1,2) + Border = 37 chars total
-		tacticalPanelWidth := 37
-		
-		// Tactical panel at right edge
-		tacticalPanelX := m.termWidth - tacticalPanelWidth
-		if tacticalPanelX < 100 {
-			tacticalPanelX = 100
+	if m.selectedAgentID != "" {
+		// Agent details panel
+		rightPanel = m.renderAgentDetailsPanel()
+		panelWidth = 54 // Width(50) + Padding(2,2) + Border = 54 chars total
+	} else {
+		// Tactical panel (default)
+		rightPanel = m.renderTacticalPanel()
+		panelWidth = 37 // Width(35) + Padding(1,2) + Border = 37 chars total
+	}
+	
+	if len(m.agents) > 0 && rightPanel != "" && m.termWidth > 100 && m.view.Type != config.ViewTypeTable {
+		// Panel at right edge
+		panelX := m.termWidth - panelWidth
+		if panelX < 100 {
+			panelX = 100
 		}
 		
 		// Split content into lines
 		leftLines := strings.Split(leftContent, "\n")
-		tacticalPanelLines := strings.Split(tacticalPanel, "\n")
+		panelLines := strings.Split(rightPanel, "\n")
 		
 		// Calculate how many header lines we have
 		headerLineCount := len(headerLines)
 		
 		// Ensure we have enough lines for the panel
 		totalLines := len(leftLines)
-		if headerLineCount + len(tacticalPanelLines) > totalLines {
-			totalLines = headerLineCount + len(tacticalPanelLines)
+		if headerLineCount + len(panelLines) > totalLines {
+			totalLines = headerLineCount + len(panelLines)
 		}
 		
-		// Build output by overlaying tactical panel on right side
+		// Build output by overlaying panel on right side
 		var result []string
 		for i := 0; i < totalLines; i++ {
 			var line string
@@ -1024,20 +1066,20 @@ func (m model) View() string {
 				// Header line - don't truncate
 			} else {
 				// Content/footer line - pad or truncate to fit
-				if currentWidth < tacticalPanelX {
-					line += strings.Repeat(" ", tacticalPanelX-currentWidth)
-				} else if currentWidth > tacticalPanelX {
-					line = lipgloss.NewStyle().MaxWidth(tacticalPanelX).Render(line)
+				if currentWidth < panelX {
+					line += strings.Repeat(" ", panelX-currentWidth)
+				} else if currentWidth > panelX {
+					line = lipgloss.NewStyle().MaxWidth(panelX).Render(line)
 					currentWidth = lipgloss.Width(line)
-					if currentWidth < tacticalPanelX {
-						line += strings.Repeat(" ", tacticalPanelX-currentWidth)
+					if currentWidth < panelX {
+						line += strings.Repeat(" ", panelX-currentWidth)
 					}
 				}
 				
-				// Overlay tactical panel
-				tacticalPanelLineIndex := i - headerLineCount
-				if tacticalPanelLineIndex >= 0 && tacticalPanelLineIndex < len(tacticalPanelLines) {
-					line += tacticalPanelLines[tacticalPanelLineIndex]
+				// Overlay panel
+				panelLineIndex := i - headerLineCount
+				if panelLineIndex >= 0 && panelLineIndex < len(panelLines) {
+					line += panelLines[panelLineIndex]
 				}
 			}
 			
@@ -1106,6 +1148,159 @@ func (m model) View() string {
 	}
 	
 	return leftContent
+}
+
+// renderAgentDetailsPanel renders detailed information about the selected agent
+func (m model) renderAgentDetailsPanel() string {
+	// Only show if an agent is selected
+	if m.selectedAgentID == "" {
+		return ""
+	}
+	
+	// Find the selected agent
+	var selectedAgent *Agent
+	for i := range m.agents {
+		if m.agents[i].ID == m.selectedAgentID {
+			selectedAgent = &m.agents[i]
+			break
+		}
+	}
+	
+	if selectedAgent == nil {
+		return "" // Agent not found
+	}
+	
+	panelStyle := lipgloss.NewStyle().
+		Border(lipgloss.ThickBorder()).
+		BorderForeground(m.theme.TitleColor).
+		Background(lipgloss.Color("#1a1a2e")).
+		Padding(1, 2).
+		Width(50)
+	
+	headerStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TitleColor).
+		Bold(true).
+		Underline(true)
+	
+	labelStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TacticalSection).
+		Bold(true)
+	
+	valueStyle := lipgloss.NewStyle().
+		Foreground(m.theme.TacticalValue)
+	
+	var lines []string
+	
+	// Header with agent type icon
+	agentTypeIcon := m.getAgentTypeIcon(*selectedAgent)
+	osIcon := m.getOSIcon(selectedAgent.OS)
+	headerText := fmt.Sprintf("%s %s AGENT DETAILS", agentTypeIcon, osIcon)
+	lines = append(lines, headerStyle.Render(headerText))
+	lines = append(lines, "")
+	
+	// Basic Info
+	lines = append(lines, labelStyle.Render("🖥️  Hostname:"))
+	lines = append(lines, "   "+valueStyle.Render(selectedAgent.Hostname))
+	lines = append(lines, "")
+	
+	lines = append(lines, labelStyle.Render("👤 User:"))
+	userColor := m.theme.NormalUser
+	if selectedAgent.IsPrivileged {
+		userColor = m.theme.PrivilegedUser
+	}
+	privilegeBadge := ""
+	if selectedAgent.IsPrivileged {
+		privilegeBadge = " 💎 PRIVILEGED"
+	}
+	lines = append(lines, "   "+lipgloss.NewStyle().Foreground(userColor).Bold(true).Render(selectedAgent.Username+privilegeBadge))
+	lines = append(lines, "")
+	
+	// Connection Info
+	lines = append(lines, labelStyle.Render("🌐 Connection:"))
+	lines = append(lines, "   "+valueStyle.Render("IP: "+selectedAgent.RemoteAddress))
+	lines = append(lines, "   "+valueStyle.Render("Transport: "+selectedAgent.Transport))
+	lines = append(lines, "")
+	
+	// System Info
+	lines = append(lines, labelStyle.Render("💻 System:"))
+	lines = append(lines, "   "+valueStyle.Render("OS: "+selectedAgent.OS))
+	lines = append(lines, "   "+valueStyle.Render("Arch: "+selectedAgent.Arch))
+	lines = append(lines, "   "+valueStyle.Render("PID: "+fmt.Sprintf("%d", selectedAgent.PID)))
+	lines = append(lines, "")
+	
+	// Agent Info
+	lines = append(lines, labelStyle.Render("🔑 Agent ID:"))
+	lines = append(lines, "   "+lipgloss.NewStyle().Foreground(m.theme.TacticalMuted).Render(selectedAgent.ID))
+	lines = append(lines, "")
+	
+	// Status
+	lines = append(lines, labelStyle.Render("📡 Status:"))
+	typeLabel := "Beacon"
+	statusColor := m.theme.BeaconColor
+	if selectedAgent.IsSession {
+		typeLabel = "Session"
+		statusColor = m.theme.SessionColor
+	}
+	if selectedAgent.IsDead {
+		typeLabel = "Dead"
+		statusColor = m.theme.DeadColor
+	}
+	lines = append(lines, "   "+lipgloss.NewStyle().Foreground(statusColor).Bold(true).Render(typeLabel))
+	
+	// Check-in time
+	if !selectedAgent.IsDead && selectedAgent.LastCheckin > 0 {
+		checkinTime := time.Unix(selectedAgent.LastCheckin, 0)
+		lines = append(lines, "   "+valueStyle.Render("Last Check-in: "+checkinTime.Format("15:04:05")))
+	}
+	
+	// Beacon info
+	if !selectedAgent.IsSession && selectedAgent.Interval > 0 {
+		intervalSec := selectedAgent.Interval / 1000000000 // Convert nanoseconds to seconds
+		lines = append(lines, "   "+valueStyle.Render(fmt.Sprintf("Interval: %ds", intervalSec)))
+		if selectedAgent.NextCheckin > 0 {
+			nextTime := time.Unix(selectedAgent.NextCheckin, 0)
+			lines = append(lines, "   "+valueStyle.Render("Next Check-in: "+nextTime.Format("15:04:05")))
+		}
+	}
+	
+	// NEW badge
+	if selectedAgent.IsNew {
+		lines = append(lines, "")
+		lines = append(lines, lipgloss.NewStyle().
+			Foreground(m.theme.NewBadgeColor).
+			Bold(true).
+			Render("   ✨ NEW AGENT"))
+	}
+	
+	// Security status
+	if selectedAgent.Burned {
+		lines = append(lines, "")
+		lines = append(lines, labelStyle.Render("🔒 Security:"))
+		lines = append(lines, "   "+lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#ff5555")).
+			Bold(true).
+			Render("🔥 BURNED"))
+	} else if selectedAgent.Evasion {
+		lines = append(lines, "")
+		lines = append(lines, labelStyle.Render("🔒 Security:"))
+		lines = append(lines, "   "+valueStyle.Render("🕵️ STEALTH MODE"))
+	}
+	
+	// Tasks info
+	if selectedAgent.TasksCount > 0 || selectedAgent.TasksCompleted > 0 {
+		lines = append(lines, "")
+		lines = append(lines, labelStyle.Render("📋 Tasks:"))
+		lines = append(lines, "   "+valueStyle.Render(fmt.Sprintf("Queued: %d", selectedAgent.TasksCount)))
+		lines = append(lines, "   "+valueStyle.Render(fmt.Sprintf("Completed: %d", selectedAgent.TasksCompleted)))
+	}
+	
+	lines = append(lines, "")
+	lines = append(lines, lipgloss.NewStyle().
+		Foreground(m.theme.TacticalMuted).
+		Italic(true).
+		Render("Press ESC to deselect"))
+	
+	return panelStyle.Render(strings.Join(lines, "\n"))
 }
 
 func (m model) renderTacticalPanel() string {
@@ -3027,6 +3222,9 @@ func (m *model) updateViewportContent() {
 		return
 	}
 	
+	// Reset agent line map for mouse interaction
+	m.agentLineMap = make(map[int]string)
+	
 	var content string
 	
 	// Check if we're in dashboard view
@@ -3053,6 +3251,7 @@ func (m *model) updateViewportContent() {
 		logoStyle := lipgloss.NewStyle().Foreground(m.theme.LogoColor).Bold(true)
 		
 		var contentLines []string
+		var logoOffset int = 0 // Track offset for agent line mapping
 		
 		if m.view.Type == config.ViewTypeTree {
 			// Tree view: Logo on left, agents on right with connectors from logo area
@@ -3067,6 +3266,8 @@ func (m *model) updateViewportContent() {
 			if len(logo) > maxLines {
 				maxLines = len(logo)
 			}
+			
+			logoOffset = 0 // Tree view has no offset, agents start at line 0
 			
 			for i := 0; i < maxLines; i++ {
 				var logoLine string
@@ -3097,12 +3298,22 @@ func (m *model) updateViewportContent() {
 			contentLines = append(contentLines, vlinePrefix+lipgloss.NewStyle().Foreground(connectorColor).Render("│"))
 			contentLines = append(contentLines, vlinePrefix+lipgloss.NewStyle().Foreground(connectorColor).Render("│"))
 			
+			// Box view: logo (5 lines) + connector lines (2 lines) = 7 line offset
+			logoOffset = 7
+			
 			// Add boxes with arrows pointing from the vertical line
 			// Need to add prefix to boxes to align with the vertical line
 			for _, agentLine := range agentLines {
 				contentLines = append(contentLines, vlinePrefix+agentLine)
 			}
 		}
+		
+		// Rebuild agent line map with correct offset
+		adjustedMap := make(map[int]string)
+		for lineNum, agentID := range m.agentLineMap {
+			adjustedMap[lineNum+logoOffset] = agentID
+		}
+		m.agentLineMap = adjustedMap
 		
 		content = strings.Join(contentLines, "\n")
 	}
@@ -3586,23 +3797,63 @@ func (m model) flattenAgents(agents []Agent) []Agent {
 	return flat
 }
 
-func (m model) renderAgents() []string {
+func (m *model) renderAgents() []string {
 	var lines []string
 
 	// Build hierarchical tree
 	tree := tree.BuildAgentTree(m.agents)
 
 	// Render tree with indentation using current view
+	currentLine := 0
 	for i, agent := range tree {
 		hasNext := i < len(tree)-1
-		lines = append(lines, m.renderAgentTreeWithViewAndContext(agent, 0, m.view.Type, hasNext, !hasNext)...)
+		agentLines := m.renderAgentTreeWithViewAndContext(agent, 0, m.view.Type, hasNext, !hasNext)
+		
+		// Recursively map agent lines including children
+		m.mapAgentLinesRecursive(agent, &currentLine, 0, m.view.Type, hasNext, !hasNext)
+		
+		lines = append(lines, agentLines...)
 	}
 
 	return lines
 }
 
+// mapAgentLinesRecursive maps line numbers to agent IDs, accounting for tree structure
+func (m *model) mapAgentLinesRecursive(agent Agent, currentLine *int, depth int, viewType config.ViewType, hasNextSibling bool, isLastChild bool) {
+	// Determine how many lines this agent takes (not including children)
+	agentLines := m.renderAgentInView(agent, viewType)
+	numLines := len(agentLines)
+	
+	// Account for connectors/structure in Box view
+	if viewType == config.ViewTypeBox {
+		if depth > 0 {
+			// Child agent has 1 extra line for connector
+			numLines += 1
+		} else {
+			// Root level agent already includes connectors in agentLines
+		}
+	}
+	
+	// Map all lines of this agent (NOT including children yet)
+	for i := 0; i < numLines; i++ {
+		m.agentLineMap[*currentLine+i] = agent.ID
+	}
+	*currentLine += numLines
+	
+	// Recursively handle children
+	for i, child := range agent.Children {
+		hasNext := i < len(agent.Children)-1
+		m.mapAgentLinesRecursive(child, currentLine, depth+1, viewType, hasNext, !hasNext)
+	}
+}
+
+// Removed old mapAgentLines helper
+
 func (m model) renderAgentLine(agent Agent) []string {
 	var lines []string
+	
+	// Check if this agent is selected
+	isSelected := m.selectedAgentID == agent.ID
 	
 	// Status icon using new helper
 	statusIcon := m.getAgentTypeIcon(agent)
@@ -3728,6 +3979,19 @@ func (m model) renderAgentLine(agent Agent) []string {
 	lines = append(lines, line1)
 	lines = append(lines, line2)
 	lines = append(lines, line3)
+
+	// Apply selection highlighting if this agent is selected
+	if isSelected {
+		selectionStyle := lipgloss.NewStyle().
+			Background(m.theme.TitleColor).
+			Foreground(lipgloss.Color("#000000")).
+			Bold(true)
+		
+		// Apply highlight to all lines
+		for i := range lines {
+			lines[i] = selectionStyle.Render(lines[i])
+		}
+	}
 
 	return lines
 }
@@ -3858,6 +4122,8 @@ func main() {
 		previousAgents:  make(map[string]Agent), // Initialize agent tracking map
 		dnsCache:        make(map[string]string), // Initialize DNS cache
 		domainCache:     make(map[string]string), // Initialize domain cache (sessionID -> domain)
+		agentLineMap:    make(map[int]string),   // Initialize agent line map for mouse clicks
+		mouseEnabled:    true,                    // Enable mouse support
 	}
 
 	// Create and run program with alt screen
