@@ -515,20 +515,35 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			clickY := msg.Y - m.viewport.YPosition
 			actualLine := m.viewport.YOffset + clickY
 			
-			// Check if clicked on an agent line (agents use viewport content coordinates)
-			if agentID, exists := m.agentLineMap[actualLine]; exists {
-				if m.selectedAgentID == agentID {
-					// Deselect if clicking same agent
-					m.selectedAgentID = ""
-				} else {
-					// Select the clicked agent
-					m.selectedAgentID = agentID
+			// Calculate the right panel boundary
+			// Agent details panel width = 54, tactical panel width = 37
+			panelWidth := 37
+			if m.selectedAgentID != "" {
+				panelWidth = 54
+			}
+			panelX := m.termWidth - panelWidth
+			if panelX < 100 {
+				panelX = 100
+			}
+			
+			// Only check agent clicks if clicking in the left content area (not in right panel)
+			// Also check if click is within viewport bounds
+			if msg.X < panelX && clickY >= 0 && clickY < m.viewport.Height {
+				// Check if clicked on an agent line (agents use viewport content coordinates)
+				if agentID, exists := m.agentLineMap[actualLine]; exists {
+					if m.selectedAgentID == agentID {
+						// Deselect if clicking same agent
+						m.selectedAgentID = ""
+					} else {
+						// Select the clicked agent
+						m.selectedAgentID = agentID
+					}
+					m.contentDirty = true
+					if m.ready {
+						m.updateViewportContent()
+					}
+					return m, nil
 				}
-				m.contentDirty = true
-				if m.ready {
-					m.updateViewportContent()
-				}
-				return m, nil
 			}
 			
 			// Check if clicked on alert panel (alerts are at bottom of screen)
