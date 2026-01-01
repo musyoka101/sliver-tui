@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Go](https://img.shields.io/badge/Go-1.21+-00ADD8.svg)
 ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS-lightgrey.svg)
@@ -41,6 +41,7 @@ Sliver C2 TUI is a powerful terminal-based user interface for managing and visua
   - **Box View** (Default) - Compact boxed layout with side connectors
   - **Table View** - Professional spreadsheet-style display
   - **Dashboard View** - 5-page tactical intelligence dashboard
+  - **Network Map** - Visual network topology with subnet grouping
   - **Tree View** (Hidden) - Classic tree layout (Ctrl+T to access)
 - **Interactive Alerts** - Click any alert to jump to that agent
 - **Agent Details Panel** - Comprehensive information on selected agents
@@ -182,16 +183,28 @@ The TUI will automatically connect to your Sliver C2 server using your configure
 ## 📸 Screenshots
 
 ### Box View (Default)
-<!-- Add your screenshot here -->
+![Box View](screenshots/box-view.png)
+*Compact boxed layout with agent connections and status indicators*
 
 ### Dashboard View
-<!-- Add your screenshot here -->
+![Dashboard View](screenshots/dashboard-view.png)
+*Analytics dashboard with 5 pages of tactical intelligence*
 
 ### Table View
-<!-- Add your screenshot here -->
+![Table View](screenshots/table-view.png)
+*Professional spreadsheet-style agent display*
 
 ### Help Menu
-<!-- Add your screenshot here -->
+![Help Menu](screenshots/help-menu.png)
+*Scrollable help menu with complete keyboard shortcuts*
+
+### Alert Panel
+![Alert Panel](screenshots/alert-panel.png)
+*Real-time alert notifications with click-to-jump functionality*
+
+### Agent Details Panel
+![Agent Details](screenshots/agent-details-panel.png)
+*Detailed agent information displayed on selection*
 
 ---
 

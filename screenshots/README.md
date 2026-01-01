@@ -75,11 +75,13 @@ flameshot gui
 
 ## Current Screenshots
 
-Once added, list them here:
+Screenshots available in this directory:
 
-- [ ] box-view.png
-- [ ] dashboard-view.png
-- [ ] table-view.png
-- [ ] help-menu.png
-- [ ] alerts.png
-- [ ] agent-details.png
+- [x] box-view.png - Default Box view with agent list
+- [x] table-view.png - Table view displaying agents in spreadsheet format
+- [x] dashboard-view.png - Dashboard view with analytics panels
+- [x] help-menu.png - Help menu with complete keyboard shortcuts
+- [x] alert-panel.png - Alert panel showing notifications
+- [x] agent-details-panel.png - Agent details panel when agent is selected
+
+**Note:** Network Map view screenshot to be added in future update.
