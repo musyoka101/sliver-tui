@@ -1423,6 +1423,10 @@ func (m model) renderAgentDetailsPanel() string {
 	lines = append(lines, "   "+valueStyle.Render("OS: "+selectedAgent.OS))
 	lines = append(lines, "   "+valueStyle.Render("Arch: "+selectedAgent.Arch))
 	lines = append(lines, "   "+valueStyle.Render("PID: "+fmt.Sprintf("%d", selectedAgent.PID)))
+	// Process name (if available)
+	if selectedAgent.Filename != "" {
+		lines = append(lines, "   "+valueStyle.Render("Process: "+selectedAgent.Filename))
+	}
 	lines = append(lines, "")
 	
 	// Agent Info
