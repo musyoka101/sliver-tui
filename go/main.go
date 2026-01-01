@@ -38,6 +38,32 @@ func (m *model) sampleCurrentActivity() {
 	m.activityTracker.SampleCurrentActivity(m.agents, m.stats)
 }
 
+// extractFilename extracts just the filename from a full path (cross-platform)
+// Works with both Windows backslash and Unix forward slash paths
+func extractFilename(fullPath string) string {
+	if fullPath == "" {
+		return ""
+	}
+	
+	// Check if this is a Windows path (contains backslash)
+	if strings.Contains(fullPath, "\\") {
+		// Windows path - split on backslash
+		parts := strings.Split(fullPath, "\\")
+		if len(parts) > 0 {
+			return parts[len(parts)-1]
+		}
+	} else {
+		// Unix path - split on forward slash
+		parts := strings.Split(fullPath, "/")
+		if len(parts) > 0 {
+			return parts[len(parts)-1]
+		}
+	}
+	
+	// Fallback: return the full path if we couldn't parse it
+	return fullPath
+}
+
 // extractSubnet extracts subnet from IP address (e.g., "192.168.1.100" -> "192.168.1.0/24")
 func extractSubnet(remoteAddress string) string {
 	// Extract IP from RemoteAddress (format: "ip:port")
@@ -146,6 +172,9 @@ type model struct {
 	// Help menu
 	showHelp        bool              // Flag to show/hide help menu
 	helpViewport    viewport.Model    // Viewport for scrolling help content
+	
+	// Process path expansion
+	expandedProcessPaths map[string]bool // Track which agents have expanded process path (agentID -> expanded)
 }
 
 func (m model) Init() tea.Cmd {
@@ -376,6 +405,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				
 				// Mark content as dirty and update viewport
+				m.contentDirty = true
+				if m.ready {
+					m.updateViewportContent()
+				}
+			}
+			return m, nil
+		
+		// Toggle process path expansion for selected agent
+		case "p":
+			if m.selectedAgentID != "" {
+				// Toggle the process path expansion for the selected agent
+				m.expandedProcessPaths[m.selectedAgentID] = !m.expandedProcessPaths[m.selectedAgentID]
+				// Mark content as dirty to trigger re-render
 				m.contentDirty = true
 				if m.ready {
 					m.updateViewportContent()
@@ -1423,9 +1465,22 @@ func (m model) renderAgentDetailsPanel() string {
 	lines = append(lines, "   "+valueStyle.Render("OS: "+selectedAgent.OS))
 	lines = append(lines, "   "+valueStyle.Render("Arch: "+selectedAgent.Arch))
 	lines = append(lines, "   "+valueStyle.Render("PID: "+fmt.Sprintf("%d", selectedAgent.PID)))
-	// Process name (if available)
+	// Process name (if available) - press 'p' to toggle full path
 	if selectedAgent.Filename != "" {
-		lines = append(lines, "   "+valueStyle.Render("Process: "+selectedAgent.Filename))
+		// Check if this agent's process path is expanded
+		isExpanded := m.expandedProcessPaths[selectedAgent.ID]
+		
+		if isExpanded {
+			// Show full path
+			lines = append(lines, "   "+valueStyle.Render("Process: "+selectedAgent.Filename))
+		} else {
+			// Show just filename with indicator to press 'p'
+			filename := extractFilename(selectedAgent.Filename)
+			clickableStyle := lipgloss.NewStyle().
+				Foreground(m.theme.SessionColor).
+				Underline(true)
+			lines = append(lines, "   "+valueStyle.Render("Process: ")+clickableStyle.Render(filename)+" "+lipgloss.NewStyle().Foreground(m.theme.TacticalMuted).Render("(press 'p' for full path)"))
+		}
 	}
 	lines = append(lines, "")
 	
@@ -1581,6 +1636,12 @@ func (m *model) buildHelpContent() string {
 	helpLines = append(helpLines, textStyle.Render("  Left Click    Select/deselect agent (shows details panel)"))
 	helpLines = append(helpLines, textStyle.Render("  Click Alert   Jump to agent associated with alert"))
 	helpLines = append(helpLines, textStyle.Render("  Scroll Wheel  Scroll content up/down (or help menu when open)"))
+	helpLines = append(helpLines, "")
+	
+	// AGENT DETAILS PANEL
+	helpLines = append(helpLines, sectionStyle.Render("AGENT DETAILS PANEL (When Agent Selected)"))
+	helpLines = append(helpLines, textStyle.Render("  p             Toggle process path (filename ↔ full path)"))
+	helpLines = append(helpLines, textStyle.Render("  ESC           Close agent details panel"))
 	helpLines = append(helpLines, "")
 	
 	// AGENT STATUS INDICATORS
@@ -4483,6 +4544,7 @@ func main() {
 		agentLineMap:    make(map[int]string),   // Initialize agent line map for mouse clicks
 		alertLineMap:    make(map[int]string),   // Initialize alert line map for mouse clicks
 		mouseEnabled:    true,                    // Enable mouse support
+		expandedProcessPaths: make(map[string]bool), // Initialize process path expansion map
 	}
 
 	// Create and run program with alt screen
