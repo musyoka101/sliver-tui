@@ -217,8 +217,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Dashboard keybind
 		case "d":
 			// Toggle to dashboard view directly
-			m.viewIndex = 3 // Dashboard is index 3
+			m.viewIndex = 2 // Dashboard is now index 2 (Box=0, Table=1, Dashboard=2)
 			m.view = config.GetView(m.viewIndex)
+			m.contentDirty = true
+			if m.ready {
+				m.updateViewportContent()
+			}
+			return m, nil
+		
+		// Hidden Tree view (undocumented easter egg) - Ctrl+T
+		case "ctrl+t":
+			// Switch to hidden Tree view
+			m.view = config.View{Name: "Tree", Type: config.ViewTypeTree}
+			m.viewIndex = -1 // Special index for hidden view
 			m.contentDirty = true
 			if m.ready {
 				m.updateViewportContent()
@@ -264,7 +275,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		
 		// Dashboard page navigation (when in dashboard view)
 		case "tab":
-			if m.viewIndex == 3 { // Dashboard view only
+			if m.viewIndex == 2 { // Dashboard view only
 				m.dashboardPage = (m.dashboardPage + 1) % 5 // 5 pages: 0-4
 				m.contentDirty = true
 				if m.ready {
@@ -274,7 +285,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		
 		case "shift+tab":
-			if m.viewIndex == 3 { // Dashboard view only
+			if m.viewIndex == 2 { // Dashboard view only
 				m.dashboardPage = (m.dashboardPage - 1 + 5) % 5 // 5 pages: 0-4
 				m.contentDirty = true
 				if m.ready {
@@ -284,7 +295,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		
 		case "f1":
-			if m.viewIndex == 3 {
+			if m.viewIndex == 2 {
 				m.dashboardPage = 0
 				m.contentDirty = true
 				if m.ready {
@@ -294,7 +305,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		
 		case "f2":
-			if m.viewIndex == 3 {
+			if m.viewIndex == 2 {
 				m.dashboardPage = 1
 				m.contentDirty = true
 				if m.ready {
@@ -304,7 +315,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		
 		case "f3":
-			if m.viewIndex == 3 {
+			if m.viewIndex == 2 {
 				m.dashboardPage = 2
 				m.contentDirty = true
 				if m.ready {
@@ -314,7 +325,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		
 		case "f4":
-			if m.viewIndex == 3 {
+			if m.viewIndex == 2 {
 				m.dashboardPage = 3
 				m.contentDirty = true
 				if m.ready {
@@ -324,7 +335,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		
 		case "f5":
-			if m.viewIndex == 3 {
+			if m.viewIndex == 2 {
 				m.dashboardPage = 4
 				m.contentDirty = true
 				if m.ready {
@@ -333,9 +344,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		
-		// Expand/collapse subnets in network topology (dashboard and network map views)
+		// Expand/collapse subnets in network topology (dashboard view only)
 		case "e":
-			if m.view.Type == config.ViewTypeDashboard || m.view.Type == config.ViewTypeNetworkMap {
+			if m.view.Type == config.ViewTypeDashboard {
 				// Toggle all subnets
 				allExpanded := true
 				for subnet := range m.expandedSubnets {
@@ -374,7 +385,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		
 		// Multi-digit subnet number input (accumulate digits in buffer)
 		case "0", "1", "2", "3", "4", "5", "6", "7", "8", "9":
-			if m.viewIndex == 3 { // Dashboard view only
+			if m.viewIndex == 2 { // Dashboard view only
 				// Append digit to buffer
 				m.numberBuffer += msg.String()
 				// Update viewport to show the buffer indicator
@@ -386,7 +397,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		
 		// Enter key - activate subnet selection from buffer
 		case "enter":
-			if m.viewIndex == 3 && len(m.numberBuffer) > 0 {
+			if m.viewIndex == 2 && len(m.numberBuffer) > 0 {
 				// Convert buffer to integer
 				subnetNum := 0
 				for _, ch := range m.numberBuffer {
@@ -658,7 +669,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.animationFrame = 0
 		}
 		// Only mark dirty and update if we're on views with animations
-		if m.view.Type == config.ViewTypeNetworkMap || m.view.Type == config.ViewTypeBox || m.view.Type == config.ViewTypeTree {
+		if m.view.Type == config.ViewTypeBox || m.view.Type == config.ViewTypeTree {
 			m.contentDirty = true
 			if m.ready {
 				m.updateViewportContent()
@@ -962,7 +973,7 @@ func (m model) View() string {
 		Foreground(m.theme.TitleColor).
 		Background(m.theme.HeaderBg).
 		Padding(0, 1)
-	title := titleStyle.Render("🎯 Sliver C2 Network Topology")
+	title := titleStyle.Render("🎯 Sliver C2 TUI")
 	headerLines = append(headerLines, title)
 	
 	statusStyle := lipgloss.NewStyle().
@@ -1517,7 +1528,7 @@ func (m *model) buildHelpContent() string {
 	
 	// VIEW CONTROLS
 	helpLines = append(helpLines, sectionStyle.Render("VIEW CONTROLS"))
-	helpLines = append(helpLines, textStyle.Render("  v             Cycle through views (Tree → Box → Table → Dashboard → Network Map)"))
+	helpLines = append(helpLines, textStyle.Render("  v             Cycle through views (Box → Table → Dashboard)"))
 	helpLines = append(helpLines, textStyle.Render("  d             Jump directly to Dashboard view"))
 	helpLines = append(helpLines, textStyle.Render("  t             Cycle through color themes"))
 	helpLines = append(helpLines, textStyle.Render("  i             Toggle icon style (Nerd Font ↔ Emoji)"))
@@ -1534,8 +1545,8 @@ func (m *model) buildHelpContent() string {
 	helpLines = append(helpLines, textStyle.Render("  F5            Jump to ANALYTICS page"))
 	helpLines = append(helpLines, "")
 	
-	// NETWORK TOPOLOGY
-	helpLines = append(helpLines, sectionStyle.Render("NETWORK TOPOLOGY (Dashboard & Network Map)"))
+	// NETWORK TOPOLOGY (Dashboard only now)
+	helpLines = append(helpLines, sectionStyle.Render("NETWORK TOPOLOGY (Dashboard View Only)"))
 	helpLines = append(helpLines, textStyle.Render("  e             Expand/collapse all subnets"))
 	helpLines = append(helpLines, textStyle.Render("  0-9           Enter subnet number (multi-digit supported)"))
 	helpLines = append(helpLines, textStyle.Render("  Enter         Toggle selected subnet expand/collapse"))
@@ -1589,11 +1600,9 @@ func (m *model) buildHelpContent() string {
 	
 	// VIEW TYPES
 	helpLines = append(helpLines, sectionStyle.Render("VIEW TYPES"))
-	helpLines = append(helpLines, textStyle.Render("  Tree View     Hierarchical tree layout with C2 logo"))
 	helpLines = append(helpLines, textStyle.Render("  Box View      Boxed layout with borders"))
 	helpLines = append(helpLines, textStyle.Render("  Table View    Spreadsheet-style table"))
 	helpLines = append(helpLines, textStyle.Render("  Dashboard     Analytics with 5 pages of tactical intelligence"))
-	helpLines = append(helpLines, textStyle.Render("  Network Map   Visual network topology with subnet grouping"))
 	helpLines = append(helpLines, "")
 	
 	// Footer
@@ -3574,8 +3583,6 @@ func (m *model) updateViewportContent() {
 	// Check if we're in dashboard view
 	if m.view.Type == config.ViewTypeDashboard {
 		content = m.renderDashboard()
-	} else if m.view.Type == config.ViewTypeNetworkMap {
-		content = m.renderNetworkMapView()
 	} else if m.view.Type == config.ViewTypeTable {
 		// Table view - render as table
 		content = m.renderTableView()
