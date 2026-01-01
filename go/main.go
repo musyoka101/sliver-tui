@@ -1430,15 +1430,19 @@ func (m model) renderAgentDetailsPanel() string {
 		processName := filepath.Base(selectedAgent.Filename)
 		lines = append(lines, "   "+valueStyle.Render("Process: "+processName))
 		
-		// Show full path on a second line if it's different and not too long
+		// Show full path on a second line if it's different
 		if processName != selectedAgent.Filename {
 			fullPath := selectedAgent.Filename
-			// Truncate very long paths (> 50 chars)
-			if len(fullPath) > 50 {
-				fullPath = "..." + fullPath[len(fullPath)-47:]
+			// Truncate very long paths (> 45 chars) - show start and end
+			if len(fullPath) > 45 {
+				// Keep the drive/root and filename visible
+				start := fullPath[:10]
+				end := fullPath[len(fullPath)-32:]
+				fullPath = start + "..." + end
 			}
-			// Display full path in muted color
-			lines = append(lines, "   "+lipgloss.NewStyle().Foreground(m.theme.TacticalMuted).Render("  ("+fullPath+")"))
+			// Display full path in muted color with more indentation
+			pathStyle := lipgloss.NewStyle().Foreground(m.theme.TacticalMuted)
+			lines = append(lines, "      "+pathStyle.Render("↳ "+fullPath))
 		}
 	}
 	lines = append(lines, "")
