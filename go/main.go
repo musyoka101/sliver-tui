@@ -1424,25 +1424,25 @@ func (m model) renderAgentDetailsPanel() string {
 	lines = append(lines, "   "+valueStyle.Render("OS: "+selectedAgent.OS))
 	lines = append(lines, "   "+valueStyle.Render("Arch: "+selectedAgent.Arch))
 	lines = append(lines, "   "+valueStyle.Render("PID: "+fmt.Sprintf("%d", selectedAgent.PID)))
-	// Process name (if available)
+	// Process name (if available) - show filename and directory separately
 	if selectedAgent.Filename != "" {
 		// Extract just the filename from the full path
 		processName := filepath.Base(selectedAgent.Filename)
+		processDir := filepath.Dir(selectedAgent.Filename)
+		
 		lines = append(lines, "   "+valueStyle.Render("Process: "+processName))
 		
-		// Show full path on a second line if it's different
-		if processName != selectedAgent.Filename {
-			fullPath := selectedAgent.Filename
-			// Truncate very long paths (> 45 chars) - show start and end
-			if len(fullPath) > 45 {
-				// Keep the drive/root and filename visible
-				start := fullPath[:10]
-				end := fullPath[len(fullPath)-32:]
-				fullPath = start + "..." + end
-			}
-			// Display full path in muted color with more indentation
+		// Show directory path in muted color if it exists
+		if processDir != "" && processDir != "." {
 			pathStyle := lipgloss.NewStyle().Foreground(m.theme.TacticalMuted)
-			lines = append(lines, "      "+pathStyle.Render("↳ "+fullPath))
+			// Truncate very long directory paths from the middle
+			if len(processDir) > 40 {
+				// Show start and end of path
+				start := processDir[:15]
+				end := processDir[len(processDir)-22:]
+				processDir = start + "..." + end
+			}
+			lines = append(lines, "   "+pathStyle.Render("Path: "+processDir))
 		}
 	}
 	lines = append(lines, "")
