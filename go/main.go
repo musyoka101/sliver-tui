@@ -528,7 +528,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			
 			// Only check agent clicks if clicking in the left content area (not in right panel)
 			// Also check if click is within viewport bounds
-			if msg.X < panelX && clickY >= 0 && clickY < m.viewport.Height {
+			// In Box view, agents start at X=13 (after logo/vertical line area)
+			// Agent boxes are approximately 50-60 chars wide, so maxX around 75
+			// In other views, agents start closer to X=0
+			minX := 0
+			maxAgentX := 80 // Agents shouldn't extend beyond this in normal cases
+			if m.view.Type == config.ViewTypeBox {
+				minX = 12 // Logo area + vertical line
+			}
+			
+			// Only register clicks within the agent content area (not empty space)
+			if msg.X >= minX && msg.X <= maxAgentX && msg.X < panelX && clickY >= 0 && clickY < m.viewport.Height {
 				// Check if clicked on an agent line (agents use viewport content coordinates)
 				if agentID, exists := m.agentLineMap[actualLine]; exists {
 					if m.selectedAgentID == agentID {
