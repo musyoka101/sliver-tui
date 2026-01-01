@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -1424,26 +1423,9 @@ func (m model) renderAgentDetailsPanel() string {
 	lines = append(lines, "   "+valueStyle.Render("OS: "+selectedAgent.OS))
 	lines = append(lines, "   "+valueStyle.Render("Arch: "+selectedAgent.Arch))
 	lines = append(lines, "   "+valueStyle.Render("PID: "+fmt.Sprintf("%d", selectedAgent.PID)))
-	// Process name (if available) - show filename and directory separately
+	// Process name (if available)
 	if selectedAgent.Filename != "" {
-		// Extract just the filename from the full path
-		processName := filepath.Base(selectedAgent.Filename)
-		processDir := filepath.Dir(selectedAgent.Filename)
-		
-		lines = append(lines, "   "+valueStyle.Render("Process: "+processName))
-		
-		// Show directory path in muted color if it exists
-		if processDir != "" && processDir != "." {
-			pathStyle := lipgloss.NewStyle().Foreground(m.theme.TacticalMuted)
-			// Truncate very long directory paths from the middle
-			if len(processDir) > 40 {
-				// Show start and end of path
-				start := processDir[:15]
-				end := processDir[len(processDir)-22:]
-				processDir = start + "..." + end
-			}
-			lines = append(lines, "   "+pathStyle.Render("Path: "+processDir))
-		}
+		lines = append(lines, "   "+valueStyle.Render("Process: "+selectedAgent.Filename))
 	}
 	lines = append(lines, "")
 	
