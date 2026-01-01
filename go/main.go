@@ -1479,7 +1479,7 @@ func (m model) renderAgentDetailsPanel() string {
 			clickableStyle := lipgloss.NewStyle().
 				Foreground(m.theme.SessionColor).
 				Underline(true)
-			lines = append(lines, "   "+valueStyle.Render("Process: ")+clickableStyle.Render(filename)+" "+lipgloss.NewStyle().Foreground(m.theme.TacticalMuted).Render("(press 'p' for full path)"))
+			lines = append(lines, "   "+valueStyle.Render("Process: ")+clickableStyle.Render(filename)+" "+lipgloss.NewStyle().Foreground(m.theme.TacticalMuted).Render("('p')"))
 		}
 	}
 	lines = append(lines, "")
