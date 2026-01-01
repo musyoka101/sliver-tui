@@ -344,9 +344,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		
-		// Expand/collapse subnets in network topology (dashboard view only)
+		// Expand/collapse subnets in network topology (dashboard and network map views)
 		case "e":
-			if m.view.Type == config.ViewTypeDashboard {
+			if m.view.Type == config.ViewTypeDashboard || m.view.Type == config.ViewTypeNetworkMap {
 				// Toggle all subnets
 				allExpanded := true
 				for subnet := range m.expandedSubnets {
@@ -669,7 +669,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.animationFrame = 0
 		}
 		// Only mark dirty and update if we're on views with animations
-		if m.view.Type == config.ViewTypeBox || m.view.Type == config.ViewTypeTree {
+		if m.view.Type == config.ViewTypeNetworkMap || m.view.Type == config.ViewTypeBox || m.view.Type == config.ViewTypeTree {
 			m.contentDirty = true
 			if m.ready {
 				m.updateViewportContent()
@@ -1528,7 +1528,7 @@ func (m *model) buildHelpContent() string {
 	
 	// VIEW CONTROLS
 	helpLines = append(helpLines, sectionStyle.Render("VIEW CONTROLS"))
-	helpLines = append(helpLines, textStyle.Render("  v             Cycle through views (Box → Table → Dashboard)"))
+	helpLines = append(helpLines, textStyle.Render("  v             Cycle through views (Box → Table → Dashboard → Network Map)"))
 	helpLines = append(helpLines, textStyle.Render("  d             Jump directly to Dashboard view"))
 	helpLines = append(helpLines, textStyle.Render("  t             Cycle through color themes"))
 	helpLines = append(helpLines, textStyle.Render("  i             Toggle icon style (Nerd Font ↔ Emoji)"))
@@ -1545,8 +1545,8 @@ func (m *model) buildHelpContent() string {
 	helpLines = append(helpLines, textStyle.Render("  F5            Jump to ANALYTICS page"))
 	helpLines = append(helpLines, "")
 	
-	// NETWORK TOPOLOGY (Dashboard only now)
-	helpLines = append(helpLines, sectionStyle.Render("NETWORK TOPOLOGY (Dashboard View Only)"))
+	// NETWORK TOPOLOGY (Dashboard and Network Map views)
+	helpLines = append(helpLines, sectionStyle.Render("NETWORK TOPOLOGY (Dashboard & Network Map)"))
 	helpLines = append(helpLines, textStyle.Render("  e             Expand/collapse all subnets"))
 	helpLines = append(helpLines, textStyle.Render("  0-9           Enter subnet number (multi-digit supported)"))
 	helpLines = append(helpLines, textStyle.Render("  Enter         Toggle selected subnet expand/collapse"))
@@ -1603,6 +1603,7 @@ func (m *model) buildHelpContent() string {
 	helpLines = append(helpLines, textStyle.Render("  Box View      Boxed layout with borders"))
 	helpLines = append(helpLines, textStyle.Render("  Table View    Spreadsheet-style table"))
 	helpLines = append(helpLines, textStyle.Render("  Dashboard     Analytics with 5 pages of tactical intelligence"))
+	helpLines = append(helpLines, textStyle.Render("  Network Map   Visual network topology with subnet grouping"))
 	helpLines = append(helpLines, "")
 	
 	// Footer
@@ -3583,6 +3584,8 @@ func (m *model) updateViewportContent() {
 	// Check if we're in dashboard view
 	if m.view.Type == config.ViewTypeDashboard {
 		content = m.renderDashboard()
+	} else if m.view.Type == config.ViewTypeNetworkMap {
+		content = m.renderNetworkMapView()
 	} else if m.view.Type == config.ViewTypeTable {
 		// Table view - render as table
 		content = m.renderTableView()
