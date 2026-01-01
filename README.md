@@ -46,7 +46,7 @@ Sliver C2 TUI is a powerful terminal-based user interface for managing and visua
 - **Interactive Alerts** - Click any alert to jump to that agent
 - **Agent Details Panel** - Comprehensive information on selected agents
 - **Scrollable Help Menu** - Full documentation with keyboard/mouse scrolling
-- **Theme System** - 6 beautiful color schemes
+- **Theme System** - 14 beautiful color schemes
 
 ### Agent Information
 
@@ -210,16 +210,25 @@ The TUI will automatically connect to your Sliver C2 server using your configure
 
 ## 🎨 Themes
 
-Six beautiful color themes included:
+**14 Beautiful Color Themes Included:**
 
-1. **Default** - Classic green terminal aesthetic
-2. **Nord** - Cool, northern bluish palette
-3. **Dracula** - Popular purple-tinted dark theme
+1. **Default (Dracula)** - Purple and cyan inspired by Dracula theme
+2. **Rainbow** - Vibrant multi-color palette with bright accents
+3. **Cyberpunk** - Neon pinks, purples, and electric blues
 4. **Matrix** - Iconic green-on-black hacker aesthetic
-5. **Cyberpunk** - Vibrant neon pinks and blues
-6. **Gruvbox** - Retro warm color scheme
+5. **Tactical** - Military-inspired olive, orange, and steel colors
+6. **Pastel** - Soft, gentle colors for a calmer aesthetic
+7. **Heatmap** - Heat gradient from red (critical) to yellow (normal)
+8. **Lip Gloss** - Charm's signature purple/pink/blue gradients
+9. **Nord** - Popular Nordic cool blues and grays
+10. **Gruvbox** - Retro warm color scheme with orange and green
+11. **Tokyo Night** - Modern dark theme with purple and blue accents
+12. **Monokai** - Classic high-contrast theme with cyan and pink
+13. **Catppuccin Mocha** - Warm, cozy dark theme (soothing pastel colors)
+14. **Catppuccin Macchiato** - Cool, balanced dark theme
+15. **Catppuccin Frappé** - Balanced dark theme with soft colors
 
-Press `t` to cycle through themes in real-time!
+Press `t` to cycle through all themes in real-time!
 
 ---
 
