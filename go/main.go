@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -1425,7 +1426,20 @@ func (m model) renderAgentDetailsPanel() string {
 	lines = append(lines, "   "+valueStyle.Render("PID: "+fmt.Sprintf("%d", selectedAgent.PID)))
 	// Process name (if available)
 	if selectedAgent.Filename != "" {
-		lines = append(lines, "   "+valueStyle.Render("Process: "+selectedAgent.Filename))
+		// Extract just the filename from the full path
+		processName := filepath.Base(selectedAgent.Filename)
+		lines = append(lines, "   "+valueStyle.Render("Process: "+processName))
+		
+		// Show full path on a second line if it's different and not too long
+		if processName != selectedAgent.Filename {
+			fullPath := selectedAgent.Filename
+			// Truncate very long paths (> 50 chars)
+			if len(fullPath) > 50 {
+				fullPath = "..." + fullPath[len(fullPath)-47:]
+			}
+			// Display full path in muted color
+			lines = append(lines, "   "+lipgloss.NewStyle().Foreground(m.theme.TacticalMuted).Render("  ("+fullPath+")"))
+		}
 	}
 	lines = append(lines, "")
 	
